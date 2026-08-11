@@ -27,50 +27,50 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-class SdlWindowJvmTest {
+class SDLWindowJvmTest {
 
     @Test
     fun windowAndRenderer() {
-        Sdl.setMainReady()
+        SDL.setMainReady()
         // The dummy driver works headless (CI without a display server).
-        assertTrue(Sdl.setHint("SDL_VIDEO_DRIVER", "dummy"))
-        assertTrue(Sdl.init(SdlInitFlags.VIDEO), "SDL_Init(VIDEO) failed: ${Sdl.error()}")
-        assertEquals("dummy", Sdl.getCurrentVideoDriver())
+        assertTrue(SDL.setHint("SDL_VIDEO_DRIVER", "dummy"))
+        assertTrue(SDL.init(SDLInitFlags.VIDEO), "SDL_Init(VIDEO) failed: ${SDL.error()}")
+        assertEquals("dummy", SDL.getCurrentVideoDriver())
 
-        Sdl.createWindow("jvm test", 320, 240).use { window ->
+        SDL.createWindow("jvm test", 320, 240).use { window ->
             assertEquals("jvm test", window.title)
-            assertEquals(SdlPoint(320, 240), window.size)
+            assertEquals(SDLPoint(320, 240), window.size)
 
-            Sdl.createRenderer(window).use { renderer ->
+            SDL.createRenderer(window).use { renderer ->
                 assertNotNull(renderer.name)
-                assertEquals(SdlPoint(320, 240), renderer.outputSize)
+                assertEquals(SDLPoint(320, 240), renderer.outputSize)
 
-                renderer.drawColor = SdlColor(255, 0, 0, 255)
-                assertEquals(SdlColor(255, 0, 0, 255), renderer.drawColor)
+                renderer.drawColor = SDLColor(255, 0, 0, 255)
+                assertEquals(SDLColor(255, 0, 0, 255), renderer.drawColor)
 
                 assertTrue(renderer.clear())
-                assertTrue(renderer.fillRect(SdlRect(10, 10, 50, 50)))
-                assertTrue(renderer.drawRect(SdlRect(20, 20, 30, 30)))
+                assertTrue(renderer.fillRect(SDLRect(10, 10, 50, 50)))
+                assertTrue(renderer.drawRect(SDLRect(20, 20, 30, 30)))
                 assertTrue(renderer.drawLine(0, 0, 100, 100))
                 renderer.present()
             }
         }
 
-        Sdl.quit()
+        SDL.quit()
     }
 
     @Test
     fun eventLoopDummyDriver() {
-        Sdl.setMainReady()
-        assertTrue(Sdl.setHint("SDL_VIDEO_DRIVER", "dummy"))
-        assertTrue(Sdl.init(SdlInitFlags.VIDEO))
-        Sdl.createWindow("event test", 160, 120).use { window ->
-            val deadline = Sdl.getTicks() + 200u
-            while (Sdl.getTicks() < deadline) {
-                Sdl.pollEvent()
-                Sdl.delay(5)
+        SDL.setMainReady()
+        assertTrue(SDL.setHint("SDL_VIDEO_DRIVER", "dummy"))
+        assertTrue(SDL.init(SDLInitFlags.VIDEO))
+        SDL.createWindow("event test", 160, 120).use { window ->
+            val deadline = SDL.getTicks() + 200u
+            while (SDL.getTicks() < deadline) {
+                SDL.pollEvent()
+                SDL.delay(5)
             }
         }
-        Sdl.quit()
+        SDL.quit()
     }
 }

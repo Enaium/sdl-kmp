@@ -23,19 +23,19 @@
 package cn.enaium.sdl
 
 /** Compiled SDL version. */
-data class SdlVersion(val major: Int, val minor: Int, val micro: Int)
+data class SDLVersion(val major: Int, val minor: Int, val micro: Int)
 
 /** A color with 8-bit components. */
-data class SdlColor(val r: Int, val g: Int, val b: Int, val a: Int = 255)
+data class SDLColor(val r: Int, val g: Int, val b: Int, val a: Int = 255)
 
 /** An integer point/size. */
-data class SdlPoint(val x: Int, val y: Int)
+data class SDLPoint(val x: Int, val y: Int)
 
 /** An integer rectangle. */
-data class SdlRect(val x: Int, val y: Int, val width: Int, val height: Int)
+data class SDLRect(val x: Int, val y: Int, val width: Int, val height: Int)
 
-/** Subsystem flags for [Sdl.init] and friends (values match SDL3). */
-object SdlInitFlags {
+/** Subsystem flags for [SDL.init] and friends (values match SDL3). */
+object SDLInitFlags {
     // Note: SDL_INIT_TIMER no longer exists in SDL3; timers need no init.
     const val AUDIO = 0x00000010
     const val VIDEO = 0x00000020
@@ -48,7 +48,7 @@ object SdlInitFlags {
 }
 
 /** Window creation flags (values match SDL3's Uint64 flags). */
-object SdlWindowFlags {
+object SDLWindowFlags {
     const val FULLSCREEN: ULong = 0x0000000000000001u
     const val OPENGL: ULong = 0x0000000000000002u
     const val OCCLUDED: ULong = 0x0000000000000004u
@@ -77,14 +77,14 @@ object SdlWindowFlags {
 }
 
 /** Renderer creation flags (values match SDL3). */
-object SdlRendererFlags {
+object SDLRendererFlags {
     const val PRESENTVSYNC = 0x00000001
     const val ACCELERATED = 0x00000002
     const val GPU = 0x00000004
 }
 
 /** Mouse buttons (values match SDL3's SDL_BUTTON_*). */
-object SdlMouseButton {
+object SDLMouseButton {
     const val LEFT = 1
     const val MIDDLE = 2
     const val RIGHT = 3
@@ -93,13 +93,13 @@ object SdlMouseButton {
 }
 
 /** Mouse wheel direction (values match SDL3's SDL_MOUSEWHEEL_*). */
-object SdlMouseWheelDirection {
+object SDLMouseWheelDirection {
     const val NORMAL = 0
     const val FLIPPED = 1
 }
 
 /** Common key codes (values match SDL3's SDLK_*). */
-object SdlKeycode {
+object SDLKeycode {
     const val RETURN = 0x0d
     const val ESCAPE = 0x1b
     const val BACKSPACE = 0x08
@@ -141,7 +141,7 @@ object SdlKeycode {
 }
 
 /** Window event types (values match SDL3's SDL_EVENT_WINDOW_*). */
-object SdlWindowEventType {
+object SDLWindowEventType {
     const val FIRST = 0x202
     const val SHOWN = 0x202
     const val HIDDEN = 0x203

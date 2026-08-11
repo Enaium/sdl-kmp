@@ -35,7 +35,7 @@ private fun CPointer<ByteVar>.toKStringOrNull(): String? = toKString()
 // Native (cinterop) window
 // =========================================================================
 
-internal class NativeSdlWindow internal constructor(internal var ptr: CPointer<SDL_Window>?) : SdlWindow {
+internal class NativeSDLWindow internal constructor(internal var ptr: CPointer<SDL_Window>?) : SDLWindow {
 
     internal fun check(): CPointer<SDL_Window> =
         ptr ?: throw IllegalStateException("SDL window is closed")
@@ -49,12 +49,12 @@ internal class NativeSdlWindow internal constructor(internal var ptr: CPointer<S
             SDL_SetWindowTitle(check(), value)
         }
 
-    override var size: SdlPoint
+    override var size: SDLPoint
         get() = memScoped {
             val w = alloc<IntVar>()
             val h = alloc<IntVar>()
             SDL_GetWindowSize(check(), w.ptr, h.ptr)
-            SdlPoint(w.value, h.value)
+            SDLPoint(w.value, h.value)
         }
         set(value) {
             SDL_SetWindowSize(check(), value.x, value.y)
@@ -86,7 +86,7 @@ internal class NativeSdlWindow internal constructor(internal var ptr: CPointer<S
 // Native (cinterop) renderer
 // =========================================================================
 
-internal class NativeSdlRenderer internal constructor(internal var ptr: CPointer<SDL_Renderer>?) : SdlRenderer {
+internal class NativeSDLRenderer internal constructor(internal var ptr: CPointer<SDL_Renderer>?) : SDLRenderer {
 
     internal fun check(): CPointer<SDL_Renderer> =
         ptr ?: throw IllegalStateException("SDL renderer is closed")
@@ -94,14 +94,14 @@ internal class NativeSdlRenderer internal constructor(internal var ptr: CPointer
     override val name: String?
         get() = SDL_GetRendererName(check())?.toKString()
 
-    override var drawColor: SdlColor
+    override var drawColor: SDLColor
         get() = memScoped {
             val r = alloc<UByteVar>()
             val g = alloc<UByteVar>()
             val b = alloc<UByteVar>()
             val a = alloc<UByteVar>()
             SDL_GetRenderDrawColor(check(), r.ptr, g.ptr, b.ptr, a.ptr)
-            SdlColor(r.value.toInt(), g.value.toInt(), b.value.toInt(), a.value.toInt())
+            SDLColor(r.value.toInt(), g.value.toInt(), b.value.toInt(), a.value.toInt())
         }
         set(value) {
             SDL_SetRenderDrawColor(
@@ -113,12 +113,12 @@ internal class NativeSdlRenderer internal constructor(internal var ptr: CPointer
             )
         }
 
-    override val outputSize: SdlPoint
+    override val outputSize: SDLPoint
         get() = memScoped {
             val w = alloc<IntVar>()
             val h = alloc<IntVar>()
             SDL_GetRenderOutputSize(check(), w.ptr, h.ptr)
-            SdlPoint(w.value, h.value)
+            SDLPoint(w.value, h.value)
         }
 
     override fun clear(): Boolean = SDL_RenderClear(check())
@@ -127,7 +127,7 @@ internal class NativeSdlRenderer internal constructor(internal var ptr: CPointer
         SDL_RenderPresent(check())
     }
 
-    override fun fillRect(rect: SdlRect): Boolean = memScoped {
+    override fun fillRect(rect: SDLRect): Boolean = memScoped {
         val r = alloc<SDL_FRect>()
         r.x = rect.x.toFloat()
         r.y = rect.y.toFloat()
@@ -136,7 +136,7 @@ internal class NativeSdlRenderer internal constructor(internal var ptr: CPointer
         SDL_RenderFillRect(check(), r.ptr)
     }
 
-    override fun drawRect(rect: SdlRect): Boolean = memScoped {
+    override fun drawRect(rect: SDLRect): Boolean = memScoped {
         val r = alloc<SDL_FRect>()
         r.x = rect.x.toFloat()
         r.y = rect.y.toFloat()
@@ -159,20 +159,20 @@ internal class NativeSdlRenderer internal constructor(internal var ptr: CPointer
 // Event translation
 // =========================================================================
 
-private fun SDL_Event.toSdlEvent(): SdlEvent {
+private fun SDL_Event.toSDLEvent(): SDLEvent {
     val type = this.type.toInt()
     return when (type) {
-        SdlEventType.QUIT -> SdlEvent.Quit(quit.timestamp)
-        in SdlEventType.WINDOW_FIRST until SdlEventType.KEY_FIRST ->
-            SdlEvent.Window(
+        SDLEventType.QUIT -> SDLEvent.Quit(quit.timestamp)
+        in SDLEventType.WINDOW_FIRST until SDLEventType.KEY_FIRST ->
+            SDLEvent.Window(
                 timestamp = window.timestamp,
                 windowId = window.windowID.toInt(),
                 type = type,
                 data1 = window.data1,
                 data2 = window.data2,
             )
-        SdlEventType.KEY_DOWN, SdlEventType.KEY_UP ->
-            SdlEvent.Key(
+        SDLEventType.KEY_DOWN, SDLEventType.KEY_UP ->
+            SDLEvent.Key(
                 timestamp = key.timestamp,
                 windowId = key.windowID.toInt(),
                 down = key.down,
@@ -181,14 +181,14 @@ private fun SDL_Event.toSdlEvent(): SdlEvent {
                 scancode = key.scancode.toInt(),
                 modifiers = key.mod.toInt(),
             )
-        SdlEventType.TEXT_INPUT ->
-            SdlEvent.TextInput(
+        SDLEventType.TEXT_INPUT ->
+            SDLEvent.TextInput(
                 timestamp = text.timestamp,
                 windowId = text.windowID.toInt(),
                 text = text.text?.toKString() ?: "",
             )
-        SdlEventType.MOUSE_MOTION ->
-            SdlEvent.MouseMotion(
+        SDLEventType.MOUSE_MOTION ->
+            SDLEvent.MouseMotion(
                 timestamp = motion.timestamp,
                 windowId = motion.windowID.toInt(),
                 x = motion.x,
@@ -196,8 +196,8 @@ private fun SDL_Event.toSdlEvent(): SdlEvent {
                 dx = motion.xrel,
                 dy = motion.yrel,
             )
-        SdlEventType.MOUSE_BUTTON_DOWN, SdlEventType.MOUSE_BUTTON_UP ->
-            SdlEvent.MouseButton(
+        SDLEventType.MOUSE_BUTTON_DOWN, SDLEventType.MOUSE_BUTTON_UP ->
+            SDLEvent.MouseButton(
                 timestamp = button.timestamp,
                 windowId = button.windowID.toInt(),
                 down = button.down,
@@ -206,15 +206,15 @@ private fun SDL_Event.toSdlEvent(): SdlEvent {
                 x = button.x,
                 y = button.y,
             )
-        SdlEventType.MOUSE_WHEEL ->
-            SdlEvent.MouseWheel(
+        SDLEventType.MOUSE_WHEEL ->
+            SDLEvent.MouseWheel(
                 timestamp = wheel.timestamp,
                 windowId = wheel.windowID.toInt(),
                 x = wheel.x,
                 y = wheel.y,
                 direction = wheel.direction.value.toInt(),
             )
-        else -> SdlEvent.Unknown(timestamp = type.toULong(), type = type)
+        else -> SDLEvent.Unknown(timestamp = type.toULong(), type = type)
     }
 }
 
@@ -222,7 +222,7 @@ private fun SDL_Event.toSdlEvent(): SdlEvent {
 // actual implementations
 // =========================================================================
 
-actual object Sdl {
+actual object SDL {
 
     actual fun setMainReady() {
         SDL_SetMainReady()
@@ -250,9 +250,9 @@ actual object Sdl {
 
     actual fun setError(message: String): Boolean = SDL_kmp_SetError(message)
 
-    actual fun version(): SdlVersion {
+    actual fun version(): SDLVersion {
         val num = SDL_GetVersion()
-        return SdlVersion(
+        return SDLVersion(
             major = num / 1000000,
             minor = (num / 1000) % 1000,
             micro = num % 1000,
@@ -271,11 +271,11 @@ actual object Sdl {
         SDL_Delay(ms.toUInt())
     }
 
-    actual fun pollEvent(): SdlEvent? {
+    actual fun pollEvent(): SDLEvent? {
         val event = nativeHeap.alloc<SDL_Event>()
         try {
             return if (SDL_PollEvent(event.ptr)) {
-                event.toSdlEvent()
+                event.toSDLEvent()
             } else {
                 null
             }
@@ -284,11 +284,11 @@ actual object Sdl {
         }
     }
 
-    actual fun waitEvent(): SdlEvent? {
+    actual fun waitEvent(): SDLEvent? {
         val event = nativeHeap.alloc<SDL_Event>()
         try {
             return if (SDL_WaitEvent(event.ptr)) {
-                event.toSdlEvent()
+                event.toSDLEvent()
             } else {
                 null
             }
@@ -301,20 +301,20 @@ actual object Sdl {
         SDL_PumpEvents()
     }
 
-    actual fun createWindow(title: String, width: Int, height: Int, flags: ULong): SdlWindow {
+    actual fun createWindow(title: String, width: Int, height: Int, flags: ULong): SDLWindow {
         val ptr = SDL_CreateWindow(title, width, height, flags)
             ?: throw IllegalStateException("SDL_CreateWindow failed: ${error()}")
-        return NativeSdlWindow(ptr)
+        return NativeSDLWindow(ptr)
     }
 
-    actual fun createRenderer(window: SdlWindow, name: String?, flags: Int): SdlRenderer {
-        val windowPtr = (window as? NativeSdlWindow)?.check()
+    actual fun createRenderer(window: SDLWindow, name: String?, flags: Int): SDLRenderer {
+        val windowPtr = (window as? NativeSDLWindow)?.check()
             ?: throw IllegalArgumentException("window is not a native SDL window")
         // SDL3 dropped the renderer flags parameter; use SDL_CreateRendererWithProperties
         // if flags are needed.
         val ptr = SDL_CreateRenderer(windowPtr, name)
             ?: throw IllegalStateException("SDL_CreateRenderer failed: ${error()}")
-        return NativeSdlRenderer(ptr)
+        return NativeSDLRenderer(ptr)
     }
 
     actual fun setHint(name: String, value: String): Boolean = SDL_SetHint(name, value)

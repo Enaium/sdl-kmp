@@ -23,7 +23,7 @@
 package cn.enaium.sdl
 
 /** SDL event type values (SDL_EVENT_*). */
-object SdlEventType {
+object SDLEventType {
     const val QUIT = 0x100
     const val WINDOW_FIRST = 0x200
     const val KEY_FIRST = 0x300
@@ -43,24 +43,24 @@ object SdlEventType {
  * An SDL event, translated into a platform-independent sealed hierarchy.
  *
  * Only a curated subset of SDL3's event types is decoded; anything else is
- * surfaced as [Unknown] (its raw [SdlEventType] value is preserved).
+ * surfaced as [Unknown] (its raw [SDLEventType] value is preserved).
  */
-sealed class SdlEvent {
+sealed class SDLEvent {
 
     /** Monotonic timestamp in milliseconds, from SDL_GetTicks. */
     abstract val timestamp: ULong
 
     /** The user requested to quit. */
-    data class Quit(override val timestamp: ULong) : SdlEvent()
+    data class Quit(override val timestamp: ULong) : SDLEvent()
 
-    /** A window state change; see [SdlWindowEventType]. */
+    /** A window state change; see [SDLWindowEventType]. */
     data class Window(
         override val timestamp: ULong,
         val windowId: Int,
         val type: Int,
         val data1: Int,
         val data2: Int,
-    ) : SdlEvent()
+    ) : SDLEvent()
 
     /** A keyboard key press or release. */
     data class Key(
@@ -71,14 +71,14 @@ sealed class SdlEvent {
         val keycode: Int,
         val scancode: Int,
         val modifiers: Int,
-    ) : SdlEvent()
+    ) : SDLEvent()
 
-    /** Text entered through the input method; see [Sdl.textInputActive]. */
+    /** Text entered through the input method; see [SDL.textInputActive]. */
     data class TextInput(
         override val timestamp: ULong,
         val windowId: Int,
         val text: String,
-    ) : SdlEvent()
+    ) : SDLEvent()
 
     /** The mouse moved. Coordinates are in window pixels. */
     data class MouseMotion(
@@ -88,9 +88,9 @@ sealed class SdlEvent {
         val y: Float,
         val dx: Float,
         val dy: Float,
-    ) : SdlEvent()
+    ) : SDLEvent()
 
-    /** A mouse button was pressed or released; see [SdlMouseButton]. */
+    /** A mouse button was pressed or released; see [SDLMouseButton]. */
     data class MouseButton(
         override val timestamp: ULong,
         val windowId: Int,
@@ -99,17 +99,17 @@ sealed class SdlEvent {
         val clicks: Int,
         val x: Float,
         val y: Float,
-    ) : SdlEvent()
+    ) : SDLEvent()
 
-    /** The mouse wheel moved; see [SdlMouseWheelDirection]. */
+    /** The mouse wheel moved; see [SDLMouseWheelDirection]. */
     data class MouseWheel(
         override val timestamp: ULong,
         val windowId: Int,
         val x: Float,
         val y: Float,
         val direction: Int,
-    ) : SdlEvent()
+    ) : SDLEvent()
 
     /** An event type that this binding does not decode. */
-    data class Unknown(override val timestamp: ULong, val type: Int) : SdlEvent()
+    data class Unknown(override val timestamp: ULong, val type: Int) : SDLEvent()
 }

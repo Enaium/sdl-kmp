@@ -22,15 +22,15 @@
 
 package cn.enaium.sdl.example
 
-import cn.enaium.sdl.Sdl
-import cn.enaium.sdl.SdlColor
-import cn.enaium.sdl.SdlEvent
-import cn.enaium.sdl.SdlInitFlags
-import cn.enaium.sdl.SdlKeycode
-import cn.enaium.sdl.SdlPoint
-import cn.enaium.sdl.SdlRect
-import cn.enaium.sdl.SdlWindowEventType
-import cn.enaium.sdl.SdlWindowFlags
+import cn.enaium.sdl.SDL
+import cn.enaium.sdl.SDLColor
+import cn.enaium.sdl.SDLEvent
+import cn.enaium.sdl.SDLInitFlags
+import cn.enaium.sdl.SDLKeycode
+import cn.enaium.sdl.SDLPoint
+import cn.enaium.sdl.SDLRect
+import cn.enaium.sdl.SDLWindowEventType
+import cn.enaium.sdl.SDLWindowFlags
 
 /**
  * A small "bouncing box" demo shared by every platform: window, renderer,
@@ -39,58 +39,58 @@ import cn.enaium.sdl.SdlWindowFlags
  * Platform entry points only provide `main()` (see jvmMain/nativeMain).
  */
 fun runExample() {
-    Sdl.setMainReady()
+    SDL.setMainReady()
 
     // The LWJGL-bundled SDL3 fails to initialize the Cocoa video driver on
     // macOS; fall back to the dummy driver and run headless in that case
     // (also covers CI/docker without a display server).
     var headless = false
-    if (!Sdl.init(SdlInitFlags.VIDEO or SdlInitFlags.EVENTS)) {
-        println("video init failed (${Sdl.error()}); falling back to the dummy driver")
-        check(Sdl.setHint("SDL_VIDEO_DRIVER", "dummy")) { "SDL_SetHint failed: ${Sdl.error()}" }
-        check(Sdl.init(SdlInitFlags.VIDEO or SdlInitFlags.EVENTS)) {
-            "SDL_Init failed: ${Sdl.error()}"
+    if (!SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)) {
+        println("video init failed (${SDL.error()}); falling back to the dummy driver")
+        check(SDL.setHint("SDL_VIDEO_DRIVER", "dummy")) { "SDL_SetHint failed: ${SDL.error()}" }
+        check(SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)) {
+            "SDL_Init failed: ${SDL.error()}"
         }
         headless = true
     }
 
-    println("SDL ${Sdl.version()} (${Sdl.revision()})")
-    println("Video driver: ${Sdl.getCurrentVideoDriver()}")
-    println("Audio driver: ${Sdl.getCurrentAudioDriver()}")
+    println("SDL ${SDL.version()} (${SDL.revision()})")
+    println("Video driver: ${SDL.getCurrentVideoDriver()}")
+    println("Audio driver: ${SDL.getCurrentAudioDriver()}")
 
     // SDL_VIDEO_DRIVER=dummy makes the demo run headless (CI, docker, ...);
     // in that case the loop exits after a fixed number of frames.
-    headless = headless || Sdl.getCurrentVideoDriver() == "dummy"
+    headless = headless || SDL.getCurrentVideoDriver() == "dummy"
     val maxFrames = if (headless) 300 else Int.MAX_VALUE
 
-    Sdl.createWindow(
+    SDL.createWindow(
         title = "sdl-kmp example",
         width = 800,
         height = 600,
-        flags = SdlWindowFlags.RESIZABLE,
+        flags = SDLWindowFlags.RESIZABLE,
     ).use { window ->
-        Sdl.createRenderer(window).use { renderer ->
+        SDL.createRenderer(window).use { renderer ->
             val box = BouncingBox { window.size }
 
             var running = true
             var frames = 0
-            val start = Sdl.getTicks()
+            val start = SDL.getTicks()
 
             while (running) {
                 // ---- events ----
                 while (true) {
-                    val event = Sdl.pollEvent() ?: break
+                    val event = SDL.pollEvent() ?: break
                     when (event) {
-                        is SdlEvent.Quit -> running = false
-                        is SdlEvent.Window ->
-                            if (event.type == SdlWindowEventType.CLOSE_REQUESTED) {
+                        is SDLEvent.Quit -> running = false
+                        is SDLEvent.Window ->
+                            if (event.type == SDLWindowEventType.CLOSE_REQUESTED) {
                                 running = false
                             }
-                        is SdlEvent.Key ->
-                            if (event.down && event.keycode == SdlKeycode.ESCAPE) {
+                        is SDLEvent.Key ->
+                            if (event.down && event.keycode == SDLKeycode.ESCAPE) {
                                 running = false
                             }
-                        is SdlEvent.MouseButton -> println(
+                        is SDLEvent.MouseButton -> println(
                             "mouse ${if (event.down) "down" else "up"} at ${event.x.toInt()},${event.y.toInt()}",
                         )
                         else -> Unit
@@ -101,29 +101,29 @@ fun runExample() {
                 box.update()
 
                 // ---- render ----
-                renderer.drawColor = SdlColor(18, 18, 24)
+                renderer.drawColor = SDLColor(18, 18, 24)
                 renderer.clear()
 
-                renderer.drawColor = SdlColor(255, 0, 128)
+                renderer.drawColor = SDLColor(255, 0, 128)
                 renderer.fillRect(box.rect)
 
-                renderer.drawColor = SdlColor(0, 200, 255)
+                renderer.drawColor = SDLColor(0, 200, 255)
                 renderer.drawLine(0, 0, window.size.x, window.size.y)
                 renderer.drawLine(window.size.x, 0, 0, window.size.y)
 
-                renderer.drawColor = SdlColor(128, 128, 128)
-                renderer.drawRect(SdlRect(0, 0, window.size.x - 1, window.size.y - 1))
+                renderer.drawColor = SDLColor(128, 128, 128)
+                renderer.drawRect(SDLRect(0, 0, window.size.x - 1, window.size.y - 1))
 
                 renderer.present()
 
                 frames++
                 if (frames % 120 == 0) {
-                    val elapsedMs = (Sdl.getTicks() - start).toFloat() / 1000f
+                    val elapsedMs = (SDL.getTicks() - start).toFloat() / 1000f
                     println("fps: ${(frames / elapsedMs).toInt()}")
                 }
 
                 // ---- frame pacing (~60 FPS) ----
-                Sdl.delay(16)
+                SDL.delay(16)
 
                 if (frames >= maxFrames) {
                     running = false
@@ -134,14 +134,14 @@ fun runExample() {
         }
     }
 
-    Sdl.quit()
+    SDL.quit()
     if (headless) {
         println("headless run finished")
     }
 }
 
 /** A box that bounces off the window edges. */
-class BouncingBox(private val bounds: () -> SdlPoint) {
+class BouncingBox(private val bounds: () -> SDLPoint) {
 
     private val size = 48
     private var x = (bounds().x - size) / 2
@@ -149,8 +149,8 @@ class BouncingBox(private val bounds: () -> SdlPoint) {
     private var vx = 3
     private var vy = 2
 
-    val rect: SdlRect
-        get() = SdlRect(x, y, size, size)
+    val rect: SDLRect
+        get() = SDLRect(x, y, size, size)
 
     fun update() {
         val (w, h) = bounds()

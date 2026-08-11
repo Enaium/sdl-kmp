@@ -36,46 +36,46 @@ kotlin {
 import cn.enaium.sdl.*
 
 fun main() {
-    Sdl.setMainReady()
+    SDL.setMainReady()
 
-    if (!Sdl.init(SdlInitFlags.VIDEO)) {
-        error("SDL_Init failed: ${Sdl.error()}")
+    if (!SDL.init(SDLInitFlags.VIDEO)) {
+        error("SDL_Init failed: ${SDL.error()}")
     }
 
-    Sdl.createWindow("hello sdl-kmp", 800, 600).use { window ->
-        Sdl.createRenderer(window).use { renderer ->
+    SDL.createWindow("hello sdl-kmp", 800, 600).use { window ->
+        SDL.createRenderer(window).use { renderer ->
             var running = true
             while (running) {
                 while (true) {
-                    val event = Sdl.pollEvent() ?: break
+                    val event = SDL.pollEvent() ?: break
                     when (event) {
-                        is SdlEvent.Quit -> running = false
-                        is SdlEvent.Key ->
-                            if (event.down && event.keycode == SdlKeycode.ESCAPE) running = false
+                        is SDLEvent.Quit -> running = false
+                        is SDLEvent.Key ->
+                            if (event.down && event.keycode == SDLKeycode.ESCAPE) running = false
                         else -> Unit
                     }
                 }
 
-                renderer.drawColor = SdlColor(18, 18, 24)
+                renderer.drawColor = SDLColor(18, 18, 24)
                 renderer.clear()
 
-                renderer.drawColor = SdlColor(255, 0, 128)
-                renderer.fillRect(SdlRect(100, 100, 200, 200))
+                renderer.drawColor = SDLColor(255, 0, 128)
+                renderer.fillRect(SDLRect(100, 100, 200, 200))
 
                 renderer.present()
-                Sdl.delay(16)
+                SDL.delay(16)
             }
         }
     }
 
-    Sdl.quit()
+    SDL.quit()
 }
 ```
 
 ### Platform notes
 
-- Native: call `Sdl.setMainReady()` before `Sdl.init` on the main thread (required on Apple platforms).
-- The `SDL_VIDEO_DRIVER=dummy` hint (environment variable or `Sdl.setHint`) makes SDL run headless — useful for CI and servers.
+- Native: call `SDL.setMainReady()` before `SDL.init` on the main thread (required on Apple platforms).
+- The `SDL_VIDEO_DRIVER=dummy` hint (environment variable or `SDL.setHint`) makes SDL run headless — useful for CI and servers.
 - The LWJGL-bundled SDL3 currently fails to initialize the Cocoa video driver on macOS; the example falls back to the dummy driver automatically. The native macOS target uses the real Cocoa driver.
 - On Linux the static SDL3 is built with the X11/Wayland drivers loaded dynamically (`dlopen`), so the published klib has no link-time dependency on X11.
 
@@ -106,14 +106,6 @@ SDL_VIDEO_DRIVER=dummy ./gradlew :example:runDebugExecutableLinuxX64
 # Unit + integration tests on the host platform
 ./gradlew :sdl-kmp:jvmTest :sdl-kmp:macosArm64Test   # macOS
 ./gradlew :sdl-kmp:jvmTest :sdl-kmp:linuxX64Test     # Linux (needs X11 dev headers)
-
-# Linux/mingw cross build inside docker (mirrors the CI ubuntu job)
-docker build --platform linux/amd64 -t sdl-kmp-test docker/
-docker run --rm --platform linux/amd64 \
-  -v sdlkmp-konan:/root/.konan -v sdlkmp-gradle:/root/.gradle \
-  -v "$PWD":/workspace -w /workspace sdl-kmp-test \
-  ./gradlew --no-daemon -Dorg.gradle.vfs.watch=false \
-    :sdl-kmp:linuxX64Test :sdl-kmp:compileKotlinMingwX64
 ```
 
 ## GitHub Actions

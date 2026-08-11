@@ -34,7 +34,7 @@ import org.lwjgl.sdl.SDLMessageBox
 import org.lwjgl.sdl.SDL_FRect
 import org.lwjgl.sdl.SDLRender
 import org.lwjgl.sdl.SDLTimer
-import org.lwjgl.sdl.SDLVersion
+import org.lwjgl.sdl.SDLVersion as LwjglSDLVersion
 import org.lwjgl.sdl.SDLVideo
 import org.lwjgl.sdl.SDL_Event
 import org.lwjgl.system.MemoryStack
@@ -44,20 +44,20 @@ import org.lwjgl.system.MemoryUtil
 // JVM (LWJGL SDL3 bindings) implementations
 // =========================================================================
 
-private fun SDL_Event.toSdlEvent(): SdlEvent {
+private fun SDL_Event.toSDLEvent(): SDLEvent {
     val type = type()
     return when (type) {
-        SdlEventType.QUIT -> SdlEvent.Quit(quit().timestamp().toULong())
-        in SdlEventType.WINDOW_FIRST until SdlEventType.KEY_FIRST ->
-            SdlEvent.Window(
+        SDLEventType.QUIT -> SDLEvent.Quit(quit().timestamp().toULong())
+        in SDLEventType.WINDOW_FIRST until SDLEventType.KEY_FIRST ->
+            SDLEvent.Window(
                 timestamp = window().timestamp().toULong(),
                 windowId = window().windowID(),
                 type = type,
                 data1 = window().data1(),
                 data2 = window().data2(),
             )
-        SdlEventType.KEY_DOWN, SdlEventType.KEY_UP ->
-            SdlEvent.Key(
+        SDLEventType.KEY_DOWN, SDLEventType.KEY_UP ->
+            SDLEvent.Key(
                 timestamp = key().timestamp().toULong(),
                 windowId = key().windowID(),
                 down = key().down(),
@@ -66,14 +66,14 @@ private fun SDL_Event.toSdlEvent(): SdlEvent {
                 scancode = key().scancode(),
                 modifiers = key().mod().toInt(),
             )
-        SdlEventType.TEXT_INPUT ->
-            SdlEvent.TextInput(
+        SDLEventType.TEXT_INPUT ->
+            SDLEvent.TextInput(
                 timestamp = text().timestamp().toULong(),
                 windowId = text().windowID(),
                 text = text().text()?.let { MemoryUtil.memUTF8(it) } ?: "",
             )
-        SdlEventType.MOUSE_MOTION ->
-            SdlEvent.MouseMotion(
+        SDLEventType.MOUSE_MOTION ->
+            SDLEvent.MouseMotion(
                 timestamp = motion().timestamp().toULong(),
                 windowId = motion().windowID(),
                 x = motion().x(),
@@ -81,8 +81,8 @@ private fun SDL_Event.toSdlEvent(): SdlEvent {
                 dx = motion().xrel(),
                 dy = motion().yrel(),
             )
-        SdlEventType.MOUSE_BUTTON_DOWN, SdlEventType.MOUSE_BUTTON_UP ->
-            SdlEvent.MouseButton(
+        SDLEventType.MOUSE_BUTTON_DOWN, SDLEventType.MOUSE_BUTTON_UP ->
+            SDLEvent.MouseButton(
                 timestamp = button().timestamp().toULong(),
                 windowId = button().windowID(),
                 down = button().down(),
@@ -91,15 +91,15 @@ private fun SDL_Event.toSdlEvent(): SdlEvent {
                 x = button().x(),
                 y = button().y(),
             )
-        SdlEventType.MOUSE_WHEEL ->
-            SdlEvent.MouseWheel(
+        SDLEventType.MOUSE_WHEEL ->
+            SDLEvent.MouseWheel(
                 timestamp = wheel().timestamp().toULong(),
                 windowId = wheel().windowID(),
                 x = wheel().x(),
                 y = wheel().y(),
                 direction = wheel().direction(),
             )
-        else -> SdlEvent.Unknown(timestamp = type.toULong(), type = type)
+        else -> SDLEvent.Unknown(timestamp = type.toULong(), type = type)
     }
 }
 
@@ -107,7 +107,7 @@ private fun SDL_Event.toSdlEvent(): SdlEvent {
 // JVM (LWJGL) window
 // =========================================================================
 
-internal class JvmSdlWindow internal constructor(internal var ptr: Long) : SdlWindow {
+internal class JvmSDLWindow internal constructor(internal var ptr: Long) : SDLWindow {
 
     override val id: Int
         get() = SDLVideo.SDL_GetWindowID(ptr)
@@ -118,12 +118,12 @@ internal class JvmSdlWindow internal constructor(internal var ptr: Long) : SdlWi
             SDLVideo.SDL_SetWindowTitle(ptr, value)
         }
 
-    override var size: SdlPoint
+    override var size: SDLPoint
         get() = MemoryStack.stackPush().use { stack ->
             val w = stack.mallocInt(1)
             val h = stack.mallocInt(1)
             SDLVideo.SDL_GetWindowSize(ptr, w, h)
-            SdlPoint(w.get(0), h.get(0))
+            SDLPoint(w.get(0), h.get(0))
         }
         set(value) {
             SDLVideo.SDL_SetWindowSize(ptr, value.x, value.y)
@@ -155,19 +155,19 @@ internal class JvmSdlWindow internal constructor(internal var ptr: Long) : SdlWi
 // JVM (LWJGL) renderer
 // =========================================================================
 
-internal class JvmSdlRenderer internal constructor(internal var ptr: Long) : SdlRenderer {
+internal class JvmSDLRenderer internal constructor(internal var ptr: Long) : SDLRenderer {
 
     override val name: String?
         get() = SDLRender.SDL_GetRendererName(ptr)
 
-    override var drawColor: SdlColor
+    override var drawColor: SDLColor
         get() = MemoryStack.stackPush().use { stack ->
             val r = stack.malloc(1)
             val g = stack.malloc(1)
             val b = stack.malloc(1)
             val a = stack.malloc(1)
             SDLRender.SDL_GetRenderDrawColor(ptr, r, g, b, a)
-            SdlColor(
+            SDLColor(
                 r.get(0).toInt() and 0xff,
                 g.get(0).toInt() and 0xff,
                 b.get(0).toInt() and 0xff,
@@ -184,12 +184,12 @@ internal class JvmSdlRenderer internal constructor(internal var ptr: Long) : Sdl
             )
         }
 
-    override val outputSize: SdlPoint
+    override val outputSize: SDLPoint
         get() = MemoryStack.stackPush().use { stack ->
             val w = stack.mallocInt(1)
             val h = stack.mallocInt(1)
             SDLRender.SDL_GetRenderOutputSize(ptr, w, h)
-            SdlPoint(w.get(0), h.get(0))
+            SDLPoint(w.get(0), h.get(0))
         }
 
     override fun clear(): Boolean = SDLRender.SDL_RenderClear(ptr)
@@ -198,7 +198,7 @@ internal class JvmSdlRenderer internal constructor(internal var ptr: Long) : Sdl
         SDLRender.SDL_RenderPresent(ptr)
     }
 
-    override fun fillRect(rect: SdlRect): Boolean {
+    override fun fillRect(rect: SDLRect): Boolean {
         val r = SDL_FRect.calloc()
         try {
             r.x(rect.x.toFloat()).y(rect.y.toFloat()).w(rect.width.toFloat()).h(rect.height.toFloat())
@@ -208,7 +208,7 @@ internal class JvmSdlRenderer internal constructor(internal var ptr: Long) : Sdl
         }
     }
 
-    override fun drawRect(rect: SdlRect): Boolean {
+    override fun drawRect(rect: SDLRect): Boolean {
         val r = SDL_FRect.calloc()
         try {
             r.x(rect.x.toFloat()).y(rect.y.toFloat()).w(rect.width.toFloat()).h(rect.height.toFloat())
@@ -232,7 +232,7 @@ internal class JvmSdlRenderer internal constructor(internal var ptr: Long) : Sdl
 // actual implementations
 // =========================================================================
 
-actual object Sdl {
+actual object SDL {
 
     // LWJGL bundles SDL3 and loads its native library on class load; on the
     // JVM there is no SDL_main hijacking to guard against.
@@ -262,16 +262,16 @@ actual object Sdl {
 
     actual fun setError(message: String): Boolean = SDLError.SDL_SetError(message)
 
-    actual fun version(): SdlVersion {
-        val num = SDLVersion.SDL_GetVersion()
-        return SdlVersion(
+    actual fun version(): SDLVersion {
+        val num = LwjglSDLVersion.SDL_GetVersion()
+        return SDLVersion(
             major = num / 1000000,
             minor = (num / 1000) % 1000,
             micro = num % 1000,
         )
     }
 
-    actual fun revision(): String? = SDLVersion.SDL_GetRevision()
+    actual fun revision(): String? = LwjglSDLVersion.SDL_GetRevision()
 
     actual fun getTicks(): ULong = SDLTimer.SDL_GetTicks().toULong()
 
@@ -283,19 +283,19 @@ actual object Sdl {
         SDLTimer.SDL_Delay(ms)
     }
 
-    actual fun pollEvent(): SdlEvent? {
+    actual fun pollEvent(): SDLEvent? {
         val event = SDL_Event.calloc()
         try {
-            return if (SDLEvents.SDL_PollEvent(event)) event.toSdlEvent() else null
+            return if (SDLEvents.SDL_PollEvent(event)) event.toSDLEvent() else null
         } finally {
             event.free()
         }
     }
 
-    actual fun waitEvent(): SdlEvent? {
+    actual fun waitEvent(): SDLEvent? {
         val event = SDL_Event.calloc()
         try {
-            return if (SDLEvents.SDL_WaitEvent(event)) event.toSdlEvent() else null
+            return if (SDLEvents.SDL_WaitEvent(event)) event.toSDLEvent() else null
         } finally {
             event.free()
         }
@@ -305,14 +305,14 @@ actual object Sdl {
         SDLEvents.SDL_PumpEvents()
     }
 
-    actual fun createWindow(title: String, width: Int, height: Int, flags: ULong): SdlWindow {
+    actual fun createWindow(title: String, width: Int, height: Int, flags: ULong): SDLWindow {
         val ptr = SDLVideo.SDL_CreateWindow(title, width, height, flags.toLong())
         check(ptr != 0L) { "SDL_CreateWindow failed: ${error()}" }
-        return JvmSdlWindow(ptr)
+        return JvmSDLWindow(ptr)
     }
 
-    actual fun createRenderer(window: SdlWindow, name: String?, flags: Int): SdlRenderer {
-        val windowPtr = (window as? JvmSdlWindow)?.ptr ?: throw IllegalArgumentException(
+    actual fun createRenderer(window: SDLWindow, name: String?, flags: Int): SDLRenderer {
+        val windowPtr = (window as? JvmSDLWindow)?.ptr ?: throw IllegalArgumentException(
             "window is not a JVM SDL window",
         )
         val ptr = if (name != null) {
@@ -321,7 +321,7 @@ actual object Sdl {
             SDLRender.nSDL_CreateRenderer(windowPtr, 0L)
         }
         check(ptr != 0L) { "SDL_CreateRenderer failed: ${error()}" }
-        return JvmSdlRenderer(ptr)
+        return JvmSDLRenderer(ptr)
     }
 
     actual fun setHint(name: String, value: String): Boolean = SDLHints.SDL_SetHint(name, value)

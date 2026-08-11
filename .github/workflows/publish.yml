@@ -45,6 +45,10 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
+        with:
+          # The SDL submodule ships its own wrapper jar (android-project),
+          # which is not part of the action's known-good checksum list.
+          validate-wrappers: false
 
       - name: Decode signing key
         run: |
@@ -101,6 +105,10 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
+        with:
+          # The SDL submodule ships its own wrapper jar (android-project),
+          # which is not part of the action's known-good checksum list.
+          validate-wrappers: false
 
       - name: Decode signing key
         run: |

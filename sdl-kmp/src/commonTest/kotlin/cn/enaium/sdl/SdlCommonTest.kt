@@ -28,62 +28,62 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-class SdlCommonTest {
+class SDLCommonTest {
 
     @Test
     fun version() {
-        val version = Sdl.version()
+        val version = SDL.version()
         assertEquals(3, version.major)
         assertTrue(version.minor >= 2, "expected SDL 3.2+, got $version")
-        assertNotNull(Sdl.revision())
+        assertNotNull(SDL.revision())
     }
 
     @Test
     fun initAndQuit() {
-        Sdl.setMainReady()
-        assertTrue(Sdl.init(SdlInitFlags.EVENTS), "SDL_Init failed: ${Sdl.error()}")
-        assertNotEquals(0, Sdl.wasInit(SdlInitFlags.EVENTS) and SdlInitFlags.EVENTS)
-        assertTrue(Sdl.initSubSystem(SdlInitFlags.EVENTS))
-        Sdl.quitSubSystem(SdlInitFlags.EVENTS)
-        Sdl.quit()
+        SDL.setMainReady()
+        assertTrue(SDL.init(SDLInitFlags.EVENTS), "SDL_Init failed: ${SDL.error()}")
+        assertNotEquals(0, SDL.wasInit(SDLInitFlags.EVENTS) and SDLInitFlags.EVENTS)
+        assertTrue(SDL.initSubSystem(SDLInitFlags.EVENTS))
+        SDL.quitSubSystem(SDLInitFlags.EVENTS)
+        SDL.quit()
     }
 
     @Test
     fun errorRoundTrip() {
-        Sdl.clearError()
-        assertEquals(null, Sdl.error())
+        SDL.clearError()
+        assertEquals(null, SDL.error())
         // SDL_SetError is variadic; LWJGL's wrapper calls it through the
         // non-variadic ABI and is not guaranteed to succeed on all platforms.
-        if (Sdl.setError("kotlin sdl error")) {
-            assertEquals("kotlin sdl error", Sdl.error())
-            Sdl.clearError()
-            assertEquals(null, Sdl.error())
+        if (SDL.setError("kotlin sdl error")) {
+            assertEquals("kotlin sdl error", SDL.error())
+            SDL.clearError()
+            assertEquals(null, SDL.error())
         }
     }
 
     @Test
     fun delay() {
         // SDL3 timers work without any subsystem initialization.
-        Sdl.setMainReady()
-        val before = Sdl.getTicks()
-        Sdl.delay(30)
-        val after = Sdl.getTicks()
+        SDL.setMainReady()
+        val before = SDL.getTicks()
+        SDL.delay(30)
+        val after = SDL.getTicks()
         assertTrue(after >= before, "ticks went backwards")
         assertTrue(after - before >= 30u, "delay(30) returned too early: ${after - before}ms")
     }
 
     @Test
     fun performanceCounter() {
-        assertTrue(Sdl.performanceFrequency() > 0u)
-        val a = Sdl.performanceCounter()
-        val b = Sdl.performanceCounter()
+        assertTrue(SDL.performanceFrequency() > 0u)
+        val a = SDL.performanceCounter()
+        val b = SDL.performanceCounter()
         assertTrue(b >= a)
     }
 
     @Test
     fun hints() {
-        Sdl.setMainReady()
-        assertTrue(Sdl.setHint("SDL_TEST_HINT", "value"))
-        assertEquals("value", Sdl.getHint("SDL_TEST_HINT"))
+        SDL.setMainReady()
+        assertTrue(SDL.setHint("SDL_TEST_HINT", "value"))
+        assertEquals("value", SDL.getHint("SDL_TEST_HINT"))
     }
 }

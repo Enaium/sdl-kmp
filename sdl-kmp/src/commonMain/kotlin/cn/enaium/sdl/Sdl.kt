@@ -26,11 +26,11 @@ package cn.enaium.sdl
  * A native SDL window.
  *
  * The window is owned by the underlying SDL3 instance; call [close] (or
- * [Sdl.quit]) to release it. On native platforms the SDL main thread
+ * [SDL.quit]) to release it. On native platforms the SDL main thread
  * requirement applies (create and use windows from the thread that called
- * [Sdl.setMainReady]).
+ * [SDL.setMainReady]).
  */
-interface SdlWindow : AutoCloseable {
+interface SDLWindow : AutoCloseable {
 
     /** The SDL window ID, unique across the process. */
     val id: Int
@@ -39,9 +39,9 @@ interface SdlWindow : AutoCloseable {
     var title: String
 
     /** The window size in screen coordinates. */
-    var size: SdlPoint
+    var size: SDLPoint
 
-    /** The window flags (see [SdlWindowFlags]). */
+    /** The window flags (see [SDLWindowFlags]). */
     val flags: ULong
 
     fun show()
@@ -53,21 +53,21 @@ interface SdlWindow : AutoCloseable {
 }
 
 /**
- * An SDL2D renderer bound to an [SdlWindow].
+ * An SDL2D renderer bound to an [SDLWindow].
  *
  * All drawing happens in window coordinates; call [present] after issuing
  * draw commands. Destroy the renderer before its window.
  */
-interface SdlRenderer : AutoCloseable {
+interface SDLRenderer : AutoCloseable {
 
     /** The name of the rendering driver in use. */
     val name: String?
 
     /** The current drawing color. */
-    var drawColor: SdlColor
+    var drawColor: SDLColor
 
     /** The size of the rendering target in pixels. */
-    val outputSize: SdlPoint
+    val outputSize: SDLPoint
 
     /** Clears the rendering target with the current [drawColor]. */
     fun clear(): Boolean
@@ -76,10 +76,10 @@ interface SdlRenderer : AutoCloseable {
     fun present()
 
     /** Fills [rect] with the current [drawColor]. */
-    fun fillRect(rect: SdlRect): Boolean
+    fun fillRect(rect: SDLRect): Boolean
 
     /** Draws an outline of [rect] with the current [drawColor]. */
-    fun drawRect(rect: SdlRect): Boolean
+    fun drawRect(rect: SDLRect): Boolean
 
     /** Draws a line between two points with the current [drawColor]. */
     fun drawLine(x1: Int, y1: Int, x2: Int, y2: Int): Boolean
@@ -105,7 +105,7 @@ interface SdlRenderer : AutoCloseable {
  * on native platforms they delegate to the SDL3 static library embedded in
  * the published klib (see the sdl.def cinterop file).
  */
-expect object Sdl {
+expect object SDL {
 
     /**
      * Marks the calling thread as the SDL main thread. On macOS/iOS this
@@ -142,7 +142,7 @@ expect object Sdl {
     fun setError(message: String): Boolean
 
     /** The version of the underlying SDL library. */
-    fun version(): SdlVersion
+    fun version(): SDLVersion
 
     /** The revision of the underlying SDL library, e.g. `SDL-3.2.22-...`. */
     fun revision(): String?
@@ -163,26 +163,26 @@ expect object Sdl {
      * Polls the event queue. Returns the next pending event, or `null` if
      * the queue is empty. Call this frequently from the SDL main thread.
      */
-    fun pollEvent(): SdlEvent?
+    fun pollEvent(): SDLEvent?
 
     /** Blocks until an event is available and returns it. */
-    fun waitEvent(): SdlEvent?
+    fun waitEvent(): SDLEvent?
 
     /** Pumps the platform event loop without blocking. */
     fun pumpEvents()
 
     /**
      * Creates a window and returns it, or throws an exception describing
-     * the SDL error. [SdlWindowFlags] describes [flags].
+     * the SDL error. [SDLWindowFlags] describes [flags].
      */
-    fun createWindow(title: String, width: Int, height: Int, flags: ULong = 0u): SdlWindow
+    fun createWindow(title: String, width: Int, height: Int, flags: ULong = 0u): SDLWindow
 
     /**
      * Creates a renderer for [window] and returns it, or throws an
-     * exception describing the SDL error. [SdlRendererFlags] describes
+     * exception describing the SDL error. [SDLRendererFlags] describes
      * [flags].
      */
-    fun createRenderer(window: SdlWindow, name: String? = null, flags: Int = 0): SdlRenderer
+    fun createRenderer(window: SDLWindow, name: String? = null, flags: Int = 0): SDLRenderer
 
     /** Sets a hint (e.g. `SDL_HINT_VIDEO_DRIVER`); returns `false` on failure. */
     fun setHint(name: String, value: String): Boolean
