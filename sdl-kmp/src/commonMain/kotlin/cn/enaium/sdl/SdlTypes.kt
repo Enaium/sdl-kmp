@@ -34,6 +34,12 @@ data class SDLPoint(val x: Int, val y: Int)
 /** An integer rectangle. */
 data class SDLRect(val x: Int, val y: Int, val width: Int, val height: Int)
 
+/** A floating-point point. */
+data class SDLFloatPoint(val x: Float, val y: Float)
+
+/** A floating-point rectangle. */
+data class SDLFRect(val x: Float, val y: Float, val width: Float, val height: Float)
+
 /** Subsystem flags for [SDL.init] and friends (values match SDL3). */
 object SDLInitFlags {
     // Note: SDL_INIT_TIMER no longer exists in SDL3; timers need no init.
@@ -169,3 +175,256 @@ object SDLWindowEventType {
     const val DESTROYED = 0x219
     const val HDR_STATE_CHANGED = 0x21a
 }
+
+// =========================================================================
+// Display
+// =========================================================================
+
+/** A display mode (values match SDL3's SDL_DisplayMode). */
+data class SDLDisplayMode(
+    val format: Int,
+    val width: Int,
+    val height: Int,
+    val refreshRate: Float,
+    val pixelDensity: Float,
+)
+
+/** A monitor/display. */
+interface SDLDisplay : AutoCloseable {
+    val id: Int
+    val name: String?
+    val bounds: SDLRect
+    val usableBounds: SDLRect
+    val currentMode: SDLDisplayMode
+    val desktopMode: SDLDisplayMode
+    val primary: Boolean
+    override fun close() = Unit
+}
+
+// =========================================================================
+// Renderer / texture
+// =========================================================================
+
+/** Blend modes (values match SDL3's SDL_BlendMode). */
+object SDLBlendMode {
+    const val NONE = 0x00000000
+    const val BLEND = 0x00000001
+    const val BLEND_PREMULTIPLIED = 0x00000010
+    const val ADD = 0x00000002
+    const val ADD_PREMULTIPLIED = 0x00000020
+    const val MOD = 0x00000004
+    const val MUL = 0x00000008
+    const val ALPHA = 0x00000040
+    const val INVALID = 0x7FFFFFFF
+}
+
+/** Texture access modes (values match SDL3's SDL_TextureAccess). */
+object SDLTextureAccess {
+    const val STATIC = 0
+    const val STREAMING = 1
+    const val TARGET = 2
+}
+
+/** Texture scale modes (values match SDL3's SDL_ScaleMode). */
+object SDLScaleMode {
+    const val NEAREST = 0
+    const val LINEAR = 1
+}
+
+/** Pixel formats (values match SDL3's SDL_PixelFormat). */
+object SDLPixelFormat {
+    const val UNKNOWN = 0
+    const val RGB24 = 0x17101803
+    const val BGR24 = 0x17401803
+    const val ARGB8888 = 0x16362004
+    const val RGBA8888 = 0x16462004
+    const val ABGR8888 = 0x16762004
+    const val BGRA8888 = 0x16862004
+    const val RGBA32 = RGBA8888
+    const val ARGB32 = ARGB8888
+    const val BGRA32 = BGRA8888
+    const val ABGR32 = ABGR8888
+}
+
+// =========================================================================
+// Audio
+// =========================================================================
+
+/** Audio sample formats (values match SDL3's SDL_AudioFormat). */
+object SDLAudioFormat {
+    const val U8 = 0x0008
+    const val S8 = 0x8008
+    const val S16LE = 0x8010
+    const val S16BE = 0x9010
+    const val S32LE = 0x8020
+    const val S32BE = 0x9020
+    const val F32LE = 0x8120
+    const val F32BE = 0x9120
+}
+
+/** Audio device IDs (values match SDL3's SDL_AudioDeviceID). */
+object SDLAudioDeviceID {
+    const val DEFAULT_PLAYBACK = 0xFFFFFFFF
+    const val DEFAULT_RECORDING = 0xFFFFFFFE
+}
+
+/** Audio device description (matches SDL3's SDL_AudioSpec fields used here). */
+data class SDLAudioSpec(
+    val format: Int = SDLAudioFormat.F32LE,
+    val channels: Int = 2,
+    val freq: Int = 48000,
+)
+
+/** An opened audio device. */
+interface SDLAudioDevice : AutoCloseable {
+    val id: Int
+    val format: SDLAudioSpec
+    val isRecording: Boolean
+
+    /** Binds [stream] to this device; returns `false` on failure. */
+    fun bindStream(stream: SDLAudioStream): Boolean
+
+    /** Unbinds [stream] from this device. */
+    fun unbindStream(stream: SDLAudioStream)
+
+    /** Releases the device. */
+    override fun close()
+}
+
+/** An audio stream that converts and queues audio data. */
+interface SDLAudioStream : AutoCloseable {
+    /** Queues [data] (bytes in the stream's input format) for playback. */
+    fun putData(data: ByteArray): Boolean
+
+    /** Reads up to `maxLen` converted bytes; returns the number read. */
+    fun getData(maxLen: Int): ByteArray
+
+    /** Number of bytes available to read. */
+    val available: Int
+
+    /** Number of bytes queued (after conversion). */
+    val queued: Int
+
+    fun flush(): Boolean
+    fun clear(): Boolean
+
+    /** Releases the stream. */
+    override fun close()
+}
+
+// =========================================================================
+// Input
+// =========================================================================
+
+/** Key modifiers (values match SDL3's SDL_Keymod). */
+object SDLKeymod {
+    const val NONE = 0x0000
+    const val LSHIFT = 0x0001
+    const val RSHIFT = 0x0002
+    const val LCTRL = 0x0040
+    const val RCTRL = 0x0080
+    const val LALT = 0x0100
+    const val RALT = 0x0200
+    const val LGUI = 0x0400
+    const val RGUI = 0x0800
+    const val NUM = 0x1000
+    const val CAPS = 0x2000
+    const val MODE = 0x4000
+    const val CTRL = LCTRL or RCTRL
+    const val SHIFT = LSHIFT or RSHIFT
+    const val ALT = LALT or RALT
+    const val GUI = LGUI or RGUI
+}
+
+/** Mouse buttons (values match SDL3's SDL_BUTTON_* masks). */
+object SDLMouseButtonMask {
+    const val LEFT = 1 shl (1 - 1)
+    const val MIDDLE = 1 shl (2 - 1)
+    const val RIGHT = 1 shl (3 - 1)
+    const val X1 = 1 shl (4 - 1)
+    const val X2 = 1 shl (5 - 1)
+}
+
+/** An opened joystick. */
+interface SDLJoystick : AutoCloseable {
+    val id: Int
+    val name: String?
+    val type: Int
+    val numAxes: Int
+    val numBalls: Int
+    val numHats: Int
+    val numButtons: Int
+
+    fun axis(axis: Int): Short
+    fun button(button: Int): Boolean
+    fun hat(hat: Int): UByte
+    fun ball(ball: Int): SDLPoint?
+    fun rumble(lowFrequency: Int, highFrequency: Int, durationMs: Int): Boolean
+
+    /** Releases the joystick. */
+    override fun close()
+}
+
+/** An opened gamepad. */
+interface SDLGamepad : AutoCloseable {
+    val id: Int
+    val name: String?
+    val vendor: Int
+    val product: Int
+    val serial: String?
+    val connected: Boolean
+
+    fun button(button: Int): Boolean
+    fun axis(axis: Int): Short
+    fun rumble(lowFrequency: Int, highFrequency: Int, durationMs: Int): Boolean
+
+    /** Releases the gamepad. */
+    override fun close()
+}
+
+// =========================================================================
+// Misc
+// =========================================================================
+
+/** Power states (values match SDL3's SDL_PowerState). */
+object SDLPowerState {
+    const val ERROR = -1
+    const val UNKNOWN = 0
+    const val ON_BATTERY = 1
+    const val NO_BATTERY = 2
+    const val CHARGING = 3
+    const val CHARGED = 4
+}
+
+/** Well-known user folders (values match SDL3's SDL_Folder). */
+object SDLFolder {
+    const val HOME = 0
+    const val DESKTOP = 1
+    const val DOCUMENTS = 2
+    const val DOWNLOADS = 3
+}
+
+/** Message box flags (values match SDL3's SDL_MessageBoxFlags). */
+object SDLMessageBoxFlags {
+    const val ERROR = 0x00000010
+    const val WARNING = 0x00000020
+    const val INFORMATION = 0x00000040
+    const val BUTTONS_LEFT_TO_RIGHT = 0x00000080
+    const val BUTTONS_RIGHT_TO_LEFT = 0x00000100
+}
+
+/** Message box button flags (values match SDL3's SDL_MessageBoxButtonFlags). */
+object SDLMessageBoxButtonFlags {
+    const val RETURNKEY_DEFAULT = 0x00000001
+    const val ESCAPEKEY_DEFAULT = 0x00000002
+}
+
+/** A message box button description. */
+data class SDLMessageBoxButton(
+    val id: Int,
+    val text: String,
+    val flags: Int = 0,
+)
+
+/** Result of [SDL.getPowerInfo]. */
+data class SDLPowerInfo(val state: Int, val percent: Int, val secondsLeft: Int)

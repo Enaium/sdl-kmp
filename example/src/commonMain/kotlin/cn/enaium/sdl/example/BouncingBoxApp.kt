@@ -24,11 +24,15 @@ package cn.enaium.sdl.example
 
 import cn.enaium.sdl.SDL
 import cn.enaium.sdl.SDLColor
+import cn.enaium.sdl.SDLFloatPoint
+import cn.enaium.sdl.SDLFRect
+import cn.enaium.sdl.SDLPixelFormat
+import cn.enaium.sdl.SDLPoint
+import cn.enaium.sdl.SDLRect
+import cn.enaium.sdl.SDLTextureAccess
 import cn.enaium.sdl.SDLEvent
 import cn.enaium.sdl.SDLInitFlags
 import cn.enaium.sdl.SDLKeycode
-import cn.enaium.sdl.SDLPoint
-import cn.enaium.sdl.SDLRect
 import cn.enaium.sdl.SDLWindowEventType
 import cn.enaium.sdl.SDLWindowFlags
 
@@ -71,7 +75,14 @@ fun runExample() {
     ).use { window ->
         SDL.createRenderer(window).use { renderer ->
             val box = BouncingBox { window.size }
-
+            // A 64x64 RGBA gradient texture, updated and rotated every frame.
+            val texture = renderer.createTexture(
+                format = SDLPixelFormat.RGBA8888,
+                access = SDLTextureAccess.STREAMING,
+                width = 64,
+                height = 64,
+            )
+            var angle = 0.0
             var running = true
             var frames = 0
             val start = SDL.getTicks()
@@ -99,6 +110,8 @@ fun runExample() {
 
                 // ---- update ----
                 box.update()
+                angle = (angle + 1.0) % 360.0
+                angle = (angle + 1.0) % 360.0
 
                 // ---- render ----
                 renderer.drawColor = SDLColor(18, 18, 24)
@@ -106,6 +119,15 @@ fun runExample() {
 
                 renderer.drawColor = SDLColor(255, 0, 128)
                 renderer.fillRect(box.rect)
+
+                // ---- textured spinning square ----
+                texture.update(null, gradientPixels(64, 64), 64 * 4)
+                renderer.renderTextureRotated(
+                    texture = texture,
+                    dst = SDLFRect(200f, 200f, 200f, 200f),
+                    angle = angle,
+                    center = SDLFloatPoint(100f, 100f),
+                )
 
                 renderer.drawColor = SDLColor(0, 200, 255)
                 renderer.drawLine(0, 0, window.size.x, window.size.y)
@@ -131,6 +153,7 @@ fun runExample() {
             }
 
             println("ran $frames frames")
+            texture.close()
         }
     }
 
@@ -138,6 +161,21 @@ fun runExample() {
     if (headless) {
         println("headless run finished")
     }
+}
+
+/** Generates a 64x64 RGBA gradient. */
+fun gradientPixels(width: Int, height: Int): ByteArray {
+    val pixels = ByteArray(width * height * 4)
+    for (y in 0 until height) {
+        for (x in 0 until width) {
+            val i = (y * width + x) * 4
+            pixels[i] = (x * 255 / width).toByte()
+            pixels[i + 1] = (y * 255 / height).toByte()
+            pixels[i + 2] = 255.toByte()
+            pixels[i + 3] = 255.toByte()
+        }
+    }
+    return pixels
 }
 
 /** A box that bounces off the window edges. */

@@ -41,12 +41,61 @@ interface SDLWindow : AutoCloseable {
     /** The window size in screen coordinates. */
     var size: SDLPoint
 
+    /** The window position in screen coordinates. */
+    var position: SDLPoint
+
+    /** The window size in pixels (backing scale applied). */
+    val sizeInPixels: SDLPoint
+
     /** The window flags (see [SDLWindowFlags]). */
     val flags: ULong
+
+    /** The display this window is on. */
+    val displayId: Int
+
+    /** The window opacity in [0, 1]. */
+    var opacity: Float
+
+    /** Whether the window is fullscreen. */
+    var fullscreen: Boolean
+
+    /** Whether the window has a border. */
+    var bordered: Boolean
+
+    /** Whether the window is resizable by the user. */
+    var resizable: Boolean
+
+    /** Whether the window stays on top of other windows. */
+    var alwaysOnTop: Boolean
+
+    /** Whether the window grabs mouse input. */
+    var mouseGrab: Boolean
+
+    /** Whether the window grabs keyboard input. */
+    var keyboardGrab: Boolean
+
+    /** Whether relative mouse mode is enabled for this window. */
+    var relativeMouseMode: Boolean
+
+    /** The window minimum size (null when not set). */
+    var minimumSize: SDLPoint?
+
+    /** The window maximum size (null when not set). */
+    var maximumSize: SDLPoint?
 
     fun show()
     fun hide()
     fun raise()
+    fun maximize()
+    fun minimize()
+    fun restore()
+    fun flash()
+
+    /** The window's surface, if any (the surface is owned by the window). */
+    val surface: SDLSurface?
+
+    /** Sets the window icon from a surface. */
+    fun setIcon(icon: SDLSurface): Boolean
 
     /** The window was closed; releases the underlying SDL window. */
     override fun close()
@@ -69,6 +118,27 @@ interface SDLRenderer : AutoCloseable {
     /** The size of the rendering target in pixels. */
     val outputSize: SDLPoint
 
+    /** The current output size (respects the render target and viewport). */
+    val currentOutputSize: SDLPoint
+
+    /** The rendering viewport (null restores the full target). */
+    var viewport: SDLRect?
+
+    /** The clipping rectangle (null disables clipping). */
+    var clipRect: SDLRect?
+
+    /** The drawing scale. */
+    var scale: SDLFloatPoint
+
+    /** The drawing blend mode, see [SDLBlendMode]. */
+    var blendMode: Int
+
+    /** Whether VSync is enabled. */
+    var vsync: Boolean
+
+    /** The current render target texture, or null for the window. */
+    var target: SDLTexture?
+
     /** Clears the rendering target with the current [drawColor]. */
     fun clear(): Boolean
 
@@ -84,8 +154,93 @@ interface SDLRenderer : AutoCloseable {
     /** Draws a line between two points with the current [drawColor]. */
     fun drawLine(x1: Int, y1: Int, x2: Int, y2: Int): Boolean
 
+    /** Draws a point with the current [drawColor]. */
+    fun drawPoint(x: Int, y: Int): Boolean
+
+    /** Draws multiple points with the current [drawColor]. */
+    fun drawPoints(points: List<SDLPoint>): Boolean
+
+    /**
+     * Creates a texture.
+     * @param format a pixel format from [SDLPixelFormat]
+     * @param access an access mode from [SDLTextureAccess]
+     */
+    fun createTexture(format: Int, access: Int, width: Int, height: Int): SDLTexture
+
+    /** Creates a texture from [surface]. */
+    fun createTextureFromSurface(surface: SDLSurface): SDLTexture
+
+    /** Draws [texture] to the render target, optionally cropping with [src]. */
+    fun renderTexture(texture: SDLTexture, src: SDLFRect? = null, dst: SDLFRect? = null): Boolean
+
+    /** Draws [texture] rotated by [angle] degrees around [center]. */
+    fun renderTextureRotated(
+        texture: SDLTexture,
+        src: SDLFRect? = null,
+        dst: SDLFRect? = null,
+        angle: Double,
+        center: SDLFloatPoint? = null,
+        flip: Int = SDLFlipMode.NONE,
+    ): Boolean
+
     /** Releases the underlying SDL renderer. */
     override fun close()
+}
+
+/** A texture bound to an [SDLRenderer]. */
+interface SDLTexture : AutoCloseable {
+
+    /** The pixel format, see [SDLPixelFormat]. */
+    val format: Int
+
+    /** The access mode, see [SDLTextureAccess]. */
+    val access: Int
+
+    /** The texture size in pixels. */
+    val size: SDLFloatPoint
+
+    /** The color modulation (default 255,255,255). */
+    var colorMod: SDLColor
+
+    /** The alpha modulation (default 255). */
+    var alphaMod: Int
+
+    /** The blend mode, see [SDLBlendMode]. */
+    var blendMode: Int
+
+    /** The scale mode, see [SDLScaleMode]. */
+    var scaleMode: Int
+
+    /** Updates a rectangle (null = whole texture) of the texture with [pixels]. */
+    fun update(rect: SDLRect?, pixels: ByteArray, pitch: Int): Boolean
+
+    /** Locks the texture for write access; returns null on failure. */
+    fun lock(rect: SDLRect?): SDLTextureLock?
+
+    /** Unlocks the texture (must be called after a successful [lock]). */
+    fun unlock()
+
+    /** Releases the texture. */
+    override fun close()
+}
+
+/** The locked pixel data of a [SDLTexture]. */
+data class SDLTextureLock(val pixels: ByteArray, val pitch: Int)
+
+/** Flip modes (values match SDL3's SDL_FlipMode). */
+object SDLFlipMode {
+    const val NONE = 0
+    const val HORIZONTAL = 1
+    const val VERTICAL = 2
+}
+
+/** Logical presentation modes (values match SDL3's SDL_RendererLogicalPresentation). */
+object SDLLogicalPresentation {
+    const val DISABLED = 0
+    const val STRETCH = 1
+    const val LETTERBOX = 2
+    const val OVERSCAN = 3
+    const val INTEGER_SCALE = 4
 }
 
 /**
@@ -225,4 +380,167 @@ expect object SDL {
 
     /** Shows a simple modal message box; returns `false` on failure. */
     fun showSimpleMessageBox(title: String, message: String): Boolean
+
+    // ==================== displays ====================
+
+    /** The number of connected displays. */
+    val numDisplays: Int
+
+    /** The display at [index]. */
+    fun getDisplay(index: Int): SDLDisplay
+
+    /** The primary display. */
+    fun getPrimaryDisplay(): SDLDisplay
+
+    // ==================== renderer drivers ====================
+
+    /** The number of compiled-in render drivers. */
+    val numRenderDrivers: Int
+
+    /** The name of the render driver at [index]. */
+    fun getRenderDriver(index: Int): String?
+
+    /** Creates a window and a renderer for it in one call. */
+    fun createWindowAndRenderer(
+        title: String,
+        width: Int,
+        height: Int,
+        flags: ULong = 0u,
+    ): Pair<SDLWindow, SDLRenderer>
+
+    // ==================== pixels ====================
+
+    /** The name of a pixel [format] (see [SDLPixelFormat]). */
+    fun getPixelFormatName(format: Int): String?
+
+    /** Maps RGB to a pixel value in [format]. */
+    fun mapRGB(format: Int, r: Int, g: Int, b: Int): Int
+
+    /** Maps RGBA to a pixel value in [format]. */
+    fun mapRGBA(format: Int, r: Int, g: Int, b: Int, a: Int): Int
+
+    /** Decodes a pixel value in [format] to RGBA. */
+    fun getRGBA(format: Int, pixel: Int): SDLColor
+
+    // ==================== surfaces ====================
+
+    /** Creates an empty surface; [format] is from [SDLPixelFormat]. */
+    fun createSurface(width: Int, height: Int, format: Int): SDLSurface
+
+    /** Loads a BMP file into a surface. */
+    fun loadBMP(path: String): SDLSurface
+
+    // ==================== audio ====================
+
+    /** IDs of all playback (non-capture) audio devices. */
+    val audioPlaybackDevices: List<Int>
+
+    /** IDs of all recording (capture) audio devices. */
+    val audioRecordingDevices: List<Int>
+
+    /** The name of the audio device with the given [deviceId], or null. */
+    fun getAudioDeviceName(deviceId: Int): String?
+
+    /** Opens an audio device with the given [spec]. */
+    fun openAudioDevice(deviceId: Int, spec: SDLAudioSpec): SDLAudioDevice
+
+    /** Opens a device with an attached stream; the device is started automatically. */
+    fun openAudioDeviceStream(deviceId: Int, spec: SDLAudioSpec): SDLAudioStream
+
+    /** Creates a stream converting [srcSpec] into [dstSpec]. */
+    fun createAudioStream(srcSpec: SDLAudioSpec, dstSpec: SDLAudioSpec): SDLAudioStream
+
+    // ==================== keyboard ====================
+
+    /** The current keyboard state, indexed by scancode. */
+    val keyboardState: ByteArray
+
+    /** The current key modifiers, see [SDLKeymod]. */
+    val modState: Int
+
+    /** Sets the current key modifiers. */
+    fun setModState(modState: Int)
+
+    /** The keycode for a [scancode]. */
+    fun getKeyFromScancode(scancode: Int): Int
+
+    /** The scancode for a [keycode]. */
+    fun getScancodeFromKey(keycode: Int): Int
+
+    /** The name of a [keycode], or null. */
+    fun getKeyName(keycode: Int): String?
+
+    /** The name of a [scancode], or null. */
+    fun getScancodeName(scancode: Int): String?
+
+    // ==================== mouse ====================
+
+    /** The mouse position and button state (window-relative). */
+    val mouseState: SDLMouseState
+
+    /** The mouse position and button state (global). */
+    val globalMouseState: SDLMouseState
+
+    /** Warps the mouse to ([x], [y]) inside the window with [windowId]. */
+    fun warpMouseInWindow(windowId: Int, x: Float, y: Float)
+
+    /** Captures the mouse so events keep coming when the cursor leaves the window. */
+    fun captureMouse(enabled: Boolean): Boolean
+
+    /** Toggles the cursor visibility; returns true when it is shown. */
+    fun showCursor(): Boolean
+
+    // ==================== joystick / gamepad ====================
+
+    /** IDs of all connected joysticks. */
+    val joysticks: List<Int>
+
+    /** Opens the joystick with [id]. */
+    fun openJoystick(id: Int): SDLJoystick
+
+    /** IDs of all connected gamepads. */
+    val gamepads: List<Int>
+
+    /** Opens the gamepad with [id]. */
+    fun openGamepad(id: Int): SDLGamepad
+
+    // ==================== filesystem / misc ====================
+
+    /** The directory where the application was started, or null. */
+    val basePath: String?
+
+    /** The preferred directory for the application's files, or null. */
+    fun getPrefPath(orgName: String, appName: String): String?
+
+    /** The user's [folder] (see [SDLFolder]), or null. */
+    fun getUserFolder(folder: Int): String?
+
+    /** Creates a directory (and parents); returns `false` on failure. */
+    fun createDirectory(path: String): Boolean
+
+    /** Removes a file or directory; returns `false` on failure. */
+    fun removePath(path: String): Boolean
+
+    /** Renames a file or directory; returns `false` on failure. */
+    fun renamePath(oldPath: String, newPath: String): Boolean
+
+    /** The current battery state, see [SDLPowerState]. */
+    val powerInfo: SDLPowerInfo
+
+    /** Opens [url] in the default application; returns `false` on failure. */
+    fun openURL(url: String): Boolean
+
+    /** Whether the clipboard contains text. */
+    val hasClipboardText: Boolean
+
+    /** The boolean value of a hint, or [defaultValue]. */
+    fun getHintBoolean(name: String, defaultValue: Boolean): Boolean
+
+    /** Shows a message box with custom [buttons]; returns the id of the clicked button. */
+    fun showMessageBox(
+        flags: Int,
+        title: String,
+        message: String,
+        buttons: List<SDLMessageBoxButton>,
+    ): Int
 }

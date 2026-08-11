@@ -74,3 +74,63 @@ class SDLWindowJvmTest {
         SDL.quit()
     }
 }
+
+class SDLExtendedApiJvmTest {
+
+    @Test
+    fun texturesAndWindowState() {
+        SDL.setMainReady()
+        assertTrue(SDL.setHint("SDL_VIDEO_DRIVER", "dummy"))
+        assertTrue(SDL.init(SDLInitFlags.VIDEO))
+
+        SDL.createWindow("extended jvm", 320, 240).use { window ->
+            window.position = SDLPoint(40, 50)
+            assertEquals(SDLPoint(40, 50), window.position)
+
+            SDL.createRenderer(window).use { renderer ->
+                assertEquals(SDLPoint(320, 240), renderer.currentOutputSize)
+                renderer.blendMode = SDLBlendMode.NONE
+
+                val texture = renderer.createTexture(
+                    format = SDLPixelFormat.RGBA8888,
+                    access = SDLTextureAccess.STREAMING,
+                    width = 16,
+                    height = 16,
+                )
+                val pixels = ByteArray(16 * 16 * 4) { 128.toByte() }
+                assertTrue(texture.update(null, pixels, 16 * 4))
+                assertTrue(renderer.renderTexture(texture, dst = SDLFRect(0f, 0f, 16f, 16f)))
+                renderer.present()
+                texture.close()
+            }
+        }
+
+        SDL.quit()
+    }
+
+    @Test
+    fun pixelsAndSurfaces() {
+        SDL.setMainReady()
+        val red = SDL.mapRGBA(SDLPixelFormat.RGBA8888, 255, 0, 0, 255)
+        assertEquals(0xFF0000FF.toInt(), red)
+        assertEquals(
+            SDLColor(255, 0, 0, 255),
+            SDL.getRGBA(SDLPixelFormat.RGBA8888, red),
+        )
+
+        SDL.createSurface(8, 8, SDLPixelFormat.RGBA8888).use { surface ->
+            assertEquals(SDLPoint(8, 8), SDLPoint(surface.width, surface.height))
+            assertTrue(surface.fillRect(null, SDLColor(255, 0, 0, 255)))
+        }
+    }
+
+    @Test
+    fun miscApi() {
+        SDL.setMainReady()
+        assertTrue(SDL.init(SDLInitFlags.EVENTS))
+        assertTrue(SDL.getHintBoolean("SDL_TEST_HINT2", false) == false)
+        SDL.setHint("SDL_TEST_HINT2", "1")
+        assertTrue(SDL.getHintBoolean("SDL_TEST_HINT2", false))
+        SDL.quit()
+    }
+}
