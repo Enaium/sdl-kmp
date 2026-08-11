@@ -74,7 +74,16 @@ fun main() {
 
 ### Platform notes
 
-- Native: call `SDL.setMainReady()` before `SDL.init` on the main thread (required on Apple platforms).
+- Native: call `SDL.setMainReady()` before `SDL.init` on the main thread. It is only
+  **required on Apple platforms** (macOS/iOS/tvOS); on Linux/Windows it is a harmless
+  no-op that records the calling thread as the main thread and never blocks.
+- **Linux headless / CI**: with no (or an unreachable) `DISPLAY`, `SDL.init(SDL_INIT_VIDEO)`
+  can block while `XOpenDisplay` tries to connect. Set `SDL_VIDEO_DRIVER=dummy` (hint or
+  environment variable) before init, or export `DISPLAY` correctly.
+- **Kotlin version compatibility**: the published klibs are built with Kotlin 2.4.0.
+  Consuming them with a different Kotlin/Native version produces an `IrLinkageError`
+  ("No function found for symbol ...") at the first SDL call. Keep the consumer's
+  Kotlin version in sync.
 - The `SDL_VIDEO_DRIVER=dummy` hint (environment variable or `SDL.setHint`) makes SDL run headless — useful for CI and servers.
 - The LWJGL-bundled SDL3 currently fails to initialize the Cocoa video driver on macOS; the example falls back to the dummy driver automatically. The native macOS target uses the real Cocoa driver.
 - On Linux the static SDL3 is built with the X11/Wayland drivers loaded dynamically (`dlopen`), so the published klib has no link-time dependency on X11.
