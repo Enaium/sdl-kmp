@@ -46,4 +46,6 @@ tasks.register<JavaExec>("runJvm") {
     mainClass.set(providers.gradleProperty("example.mainClass").orElse("cn.enaium.sdl.example.Main_jvmKt"))
     val compilation = kotlin.targets.getByName("jvm").compilations.getByName("main")
     classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
+    // JDK 22+ requires explicit native access for JNI-based libraries like LWJGL.
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
 }

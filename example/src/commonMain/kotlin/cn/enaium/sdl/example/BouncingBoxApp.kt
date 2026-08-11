@@ -45,17 +45,19 @@ import cn.enaium.sdl.SDLWindowFlags
 fun runExample() {
     SDL.setMainReady()
 
-    // The LWJGL-bundled SDL3 fails to initialize the Cocoa video driver on
-    // macOS; fall back to the dummy driver and run headless in that case
-    // (also covers CI/docker without a display server).
+    // Try video init with the platform's best driver. On headless CI or
+    // servers the dummy driver is needed; on a desktop the native driver
+    // (cocoa/x11) should work. If the initial attempt fails and the
+    // dummy driver succeeds we assume headless — otherwise report the error.
     var headless = false
     if (!SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)) {
-        println("video init failed (${SDL.error()}); falling back to the dummy driver")
-        check(SDL.setHint("SDL_VIDEO_DRIVER", "dummy")) { "SDL_SetHint failed: ${SDL.error()}" }
-        check(SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)) {
-            "SDL_Init failed: ${SDL.error()}"
+        SDL.setHint("SDL_VIDEO_DRIVER", "dummy")
+        if (SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)) {
+            println("video init fell back to the dummy driver — running headless")
+            headless = true
+        } else {
+            error("SDL_Init(VIDEO) failed: ${SDL.error()}\nMake sure a display is available, or set SDL_VIDEO_DRIVER=dummy to run headless.")
         }
-        headless = true
     }
 
     println("SDL ${SDL.version()} (${SDL.revision()})")
