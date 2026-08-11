@@ -162,15 +162,15 @@ class SDLGLApiTest {
     fun glAttributes() {
         SDL.setMainReady()
         assertTrue(SDL.init(SDLInitFlags.VIDEO))
-        // GL attributes require a real video driver; the dummy driver used
-        // on CI reports failure, which is acceptable.
-        if (SDL.glSetAttribute(SDLGLAttribute.CONTEXT_MAJOR_VERSION, 3)) {
+        // GL attributes require a real OpenGL-capable video driver; the
+        // dummy driver used on CI does not support them.
+        if (SDL.getCurrentVideoDriver() != "dummy") {
+            assertTrue(SDL.glSetAttribute(SDLGLAttribute.CONTEXT_MAJOR_VERSION, 3))
             assertEquals(3, SDL.glGetAttribute(SDLGLAttribute.CONTEXT_MAJOR_VERSION))
-        }
-        if (SDL.glSetAttribute(SDLGLAttribute.CONTEXT_PROFILE_MASK, SDLGLProfile.CORE)) {
+            assertTrue(SDL.glSetAttribute(SDLGLAttribute.CONTEXT_PROFILE_MASK, SDLGLProfile.CORE))
             assertEquals(SDLGLProfile.CORE, SDL.glGetAttribute(SDLGLAttribute.CONTEXT_PROFILE_MASK))
+            SDL.glResetAttributes()
         }
-        SDL.glResetAttributes()
         SDL.quit()
     }
 }
