@@ -85,7 +85,7 @@ fun main() {
   ("No function found for symbol ...") at the first SDL call. Keep the consumer's
   Kotlin version in sync.
 - The `SDL_VIDEO_DRIVER=dummy` hint (environment variable or `SDL.setHint`) makes SDL run headless — useful for CI and servers.
-- **macOS JVM**: requires  (so AppKit can initialise). The example  task already sets this.
+- **macOS JVM**: requires `-XstartOnFirstThread` JVM argument (so AppKit/Cocoa can initialise). The example `runJvm` task already sets this.
 - On Linux the static SDL3 is built with the X11/Wayland drivers loaded dynamically (`dlopen`), so the published klib has no link-time dependency on X11.
 
 ### Native linking
@@ -101,11 +101,12 @@ The `example` module is a small "bouncing box" demo. All logic lives in `commonM
 # Apple targets + JVM; run on Linux for the linuxX64/mingwX64 klibs).
 ./gradlew :sdl-kmp:publishToMavenLocal
 
-# JVM
+# JVM (pass SDL_VIDEO_DRIVER=dummy for headless mode)
 ./gradlew :example:runJvm
+SDL_VIDEO_DRIVER=dummy ./gradlew :example:runJvm
 
-# Native (headless-safe)
-SDL_VIDEO_DRIVER=dummy ./gradlew :example:runDebugExecutableMacosArm64
+# Native
+./gradlew :example:runDebugExecutableMacosArm64
 SDL_VIDEO_DRIVER=dummy ./gradlew :example:runDebugExecutableLinuxX64
 ```
 
