@@ -1,5 +1,5 @@
 package = sdl3
-headers = SDL3/SDL.h SDL3/SDL_main.h cinterop_helpers.h
+headers = SDL3/SDL.h SDL3/SDL_main.h SDL3/SDL_vulkan.h cinterop_helpers.h
 compilerOpts = -std=c11 -DSDL_MAIN_HANDLED
 
 # Platform-specific linker options (suffixes are Kotlin/Native family names,

@@ -428,3 +428,66 @@ data class SDLMessageBoxButton(
 
 /** Result of [SDL.getPowerInfo]. */
 data class SDLPowerInfo(val state: Int, val percent: Int, val secondsLeft: Int)
+
+// =========================================================================
+// OpenGL
+// =========================================================================
+
+/** OpenGL context attributes (values match SDL3's SDL_GLAttr). */
+object SDLGLAttribute {
+    const val RED_SIZE = 0
+    const val GREEN_SIZE = 1
+    const val BLUE_SIZE = 2
+    const val ALPHA_SIZE = 3
+    const val BUFFER_SIZE = 4
+    const val DOUBLEBUFFER = 5
+    const val DEPTH_SIZE = 6
+    const val STENCIL_SIZE = 7
+    const val ACCUM_RED_SIZE = 8
+    const val ACCUM_GREEN_SIZE = 9
+    const val ACCUM_BLUE_SIZE = 10
+    const val ACCUM_ALPHA_SIZE = 11
+    const val STEREO = 12
+    const val MULTISAMPLEBUFFERS = 13
+    const val MULTISAMPLESAMPLES = 14
+    const val ACCELERATED_VISUAL = 15
+    const val RETAINED_BACKING = 16
+    const val CONTEXT_MAJOR_VERSION = 17
+    const val CONTEXT_MINOR_VERSION = 18
+    const val CONTEXT_FLAGS = 19
+    const val CONTEXT_PROFILE_MASK = 20
+    const val SHARE_WITH_CURRENT_CONTEXT = 21
+    const val FRAMEBUFFER_SRGB_CAPABLE = 22
+    const val CONTEXT_RELEASE_BEHAVIOR = 23
+    const val CONTEXT_RESET_NOTIFICATION = 24
+    const val CONTEXT_NO_ERROR = 25
+    const val FLOATBUFFERS = 26
+    const val EGL_PLATFORM = 27
+}
+
+/** OpenGL context profiles (values match SDL3's SDL_GLProfile). */
+object SDLGLProfile {
+    const val CORE = 0x0001
+    const val COMPATIBILITY = 0x0002
+    const val ES = 0x0004
+}
+
+/** OpenGL context flags (values match SDL3's SDL_GLContextFlag). */
+object SDLGLContextFlag {
+    const val DEBUG = 0x0001
+    const val FORWARD_COMPATIBLE = 0x0002
+    const val ROBUST_ACCESS = 0x0004
+    const val RESET_ISOLATION = 0x0008
+}
+
+/** OpenGL context release behaviors (values match SDL3). */
+object SDLGLReleaseBehavior {
+    const val NONE = 0x0000
+    const val FLUSH = 0x0001
+}
+
+/** OpenGL context reset notifications (values match SDL3). */
+object SDLGLResetNotification {
+    const val NO_NOTIFICATION = 0x0000
+    const val LOSE_CONTEXT = 0x0001
+}

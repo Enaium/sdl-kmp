@@ -155,3 +155,20 @@ class SDLExtendedApiNativeTest {
         SDL.quit()
     }
 }
+
+class SDLGLApiTest {
+
+    @Test
+    fun glAttributes() {
+        SDL.setMainReady()
+        assertTrue(SDL.init(SDLInitFlags.VIDEO))
+        // attributes work without a context
+        assertTrue(SDL.glSetAttribute(SDLGLAttribute.CONTEXT_MAJOR_VERSION, 3))
+        assertEquals(3, SDL.glGetAttribute(SDLGLAttribute.CONTEXT_MAJOR_VERSION))
+        assertTrue(SDL.glSetAttribute(SDLGLAttribute.CONTEXT_PROFILE_MASK, SDLGLProfile.CORE))
+        assertEquals(SDLGLProfile.CORE, SDL.glGetAttribute(SDLGLAttribute.CONTEXT_PROFILE_MASK))
+        // query-only APIs must not crash
+        SDL.glResetAttributes()
+        SDL.quit()
+    }
+}

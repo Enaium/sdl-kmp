@@ -52,7 +52,9 @@ import org.lwjgl.sdl.SDLRender
 import org.lwjgl.sdl.SDLTimer
 import org.lwjgl.sdl.SDLVersion as LwjglSDLVersion
 import org.lwjgl.sdl.SDLVideo
+import org.lwjgl.sdl.SDLVulkan
 import org.lwjgl.sdl.SDL_Event
+import org.lwjgl.system.JNI
 import org.lwjgl.system.MemoryStack
 import org.lwjgl.system.MemoryUtil
 
@@ -952,6 +954,128 @@ actual object SDL {
             data.free()
             buttonData.free()
         }
+    }
+
+    // ==================== OpenGL ====================
+
+    actual fun glLoadLibrary(path: String?): Boolean =
+        if (path == null) {
+            SDLVideo.nSDL_GL_LoadLibrary(0L)
+        } else {
+            SDLVideo.SDL_GL_LoadLibrary(path)
+        }
+
+    actual fun glUnloadLibrary() {
+        SDLVideo.SDL_GL_UnloadLibrary()
+    }
+
+    actual fun glGetProcAddress(proc: String): ULong =
+        SDLVideo.SDL_GL_GetProcAddress(proc).toULong()
+
+    actual fun glExtensionSupported(extension: String): Boolean =
+        SDLVideo.SDL_GL_ExtensionSupported(extension)
+
+    actual fun glResetAttributes() {
+        SDLVideo.SDL_GL_ResetAttributes()
+    }
+
+    actual fun glSetAttribute(attr: Int, value: Int): Boolean =
+        SDLVideo.SDL_GL_SetAttribute(attr, value)
+
+    actual fun glGetAttribute(attr: Int): Int? = MemoryStack.stackPush().use { stack ->
+        val value = stack.mallocInt(1)
+        if (SDLVideo.SDL_GL_GetAttribute(attr, value)) {
+            value.get(0)
+        } else {
+            null
+        }
+    }
+
+    actual fun glCreateContext(windowId: Int): ULong {
+        val window = SDLVideo.SDL_GetWindowFromID(windowId) ?: return 0uL
+        return SDLVideo.SDL_GL_CreateContext(window).toULong()
+    }
+
+    actual fun glMakeCurrent(windowId: Int, context: ULong): Boolean {
+        val window = SDLVideo.SDL_GetWindowFromID(windowId) ?: return false
+        return SDLVideo.SDL_GL_MakeCurrent(window, context.toLong())
+    }
+
+    actual val glCurrentWindow: Int?
+        get() = SDLVideo.SDL_GL_GetCurrentWindow().takeIf { it != 0L }?.let {
+            SDLVideo.SDL_GetWindowID(it)
+        }
+
+    actual val glCurrentContext: ULong
+        get() = SDLVideo.SDL_GL_GetCurrentContext().toULong()
+
+    actual fun glSetSwapInterval(interval: Int): Boolean =
+        SDLVideo.SDL_GL_SetSwapInterval(interval)
+
+    actual val glSwapInterval: Int?
+        get() = MemoryStack.stackPush().use { stack ->
+            val interval = stack.mallocInt(1)
+            if (SDLVideo.SDL_GL_GetSwapInterval(interval)) {
+                interval.get(0)
+            } else {
+                null
+            }
+        }
+
+    actual fun glSwapWindow(windowId: Int): Boolean {
+        val window = SDLVideo.SDL_GetWindowFromID(windowId) ?: return false
+        return SDLVideo.SDL_GL_SwapWindow(window)
+    }
+
+    actual fun glDestroyContext(context: ULong) {
+        if (context != 0uL) {
+            SDLVideo.SDL_GL_DestroyContext(context.toLong())
+        }
+    }
+
+    // ==================== Vulkan ====================
+
+    actual fun vulkanLoadLibrary(path: String?): Boolean =
+        if (path == null) {
+            SDLVulkan.nSDL_Vulkan_LoadLibrary(0L)
+        } else {
+            SDLVulkan.SDL_Vulkan_LoadLibrary(path)
+        }
+
+    actual fun vulkanUnloadLibrary() {
+        SDLVulkan.SDL_Vulkan_UnloadLibrary()
+    }
+
+    actual val vulkanGetVkGetInstanceProcAddr: ULong
+        get() = SDLVulkan.SDL_Vulkan_GetVkGetInstanceProcAddr().toULong()
+
+    actual val vulkanInstanceExtensions: List<String>
+        get() {
+            val names = SDLVulkan.SDL_Vulkan_GetInstanceExtensions() ?: return emptyList()
+            return (0 until names.limit()).mapNotNull { names.get(it).let { p -> MemoryUtil.memUTF8(p) } }
+        }
+
+    actual fun vulkanCreateSurface(windowId: Int, instance: ULong): ULong = MemoryStack.stackPush().use { stack ->
+        val window = SDLVideo.SDL_GetWindowFromID(windowId) ?: return@use 0uL
+        val surface = stack.mallocLong(1)
+        val ok = SDLVulkan.nSDL_Vulkan_CreateSurface(window, instance.toLong(), 0L, MemoryUtil.memAddress(surface))
+        if (ok) surface.get(0).toULong() else 0uL
+    }
+
+    actual fun vulkanDestroySurface(instance: ULong, surface: ULong) {
+        if (surface != 0uL) {
+            SDLVulkan.nSDL_Vulkan_DestroySurface(instance.toLong(), surface.toLong(), 0L)
+        }
+    }
+
+    actual fun vulkanGetPresentationSupport(instance: ULong, physicalDevice: ULong, queueFamilyIndex: Int): Boolean {
+        // LWJGL's typed overload requires building VkInstance/VkPhysicalDevice
+        // capabilities objects; call the native function pointer directly.
+        val functions = Class.forName("org.lwjgl.sdl.SDLVulkan\$Functions")
+        val field = functions.getDeclaredField("Vulkan_GetPresentationSupport")
+        field.isAccessible = true
+        val fn = field.getLong(null)
+        return JNI.invokePPZ(instance.toLong(), physicalDevice.toLong(), queueFamilyIndex, fn)
     }
 }
 

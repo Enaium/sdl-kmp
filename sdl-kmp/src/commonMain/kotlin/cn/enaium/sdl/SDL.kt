@@ -543,4 +543,77 @@ expect object SDL {
         message: String,
         buttons: List<SDLMessageBoxButton>,
     ): Int
+
+    // ==================== OpenGL ====================
+
+    /** Loads the OpenGL library; [path] is optional. */
+    fun glLoadLibrary(path: String? = null): Boolean
+
+    /** Unloads the OpenGL library. */
+    fun glUnloadLibrary()
+
+    /** The address of an OpenGL function, or 0 if not found. */
+    fun glGetProcAddress(proc: String): ULong
+
+    /** Whether the given OpenGL extension is supported. */
+    fun glExtensionSupported(extension: String): Boolean
+
+    /** Resets all OpenGL context attributes to their defaults. */
+    fun glResetAttributes()
+
+    /** Sets an OpenGL context attribute (see [SDLGLAttribute]). */
+    fun glSetAttribute(attr: Int, value: Int): Boolean
+
+    /** The value of an OpenGL context attribute, or null. */
+    fun glGetAttribute(attr: Int): Int?
+
+    /** Creates an OpenGL context for the window with [windowId]; returns 0 on failure. */
+    fun glCreateContext(windowId: Int): ULong
+
+    /** Makes [context] current for the window with [windowId]. */
+    fun glMakeCurrent(windowId: Int, context: ULong): Boolean
+
+    /** The window of the current OpenGL context, or null. */
+    val glCurrentWindow: Int?
+
+    /** The current OpenGL context, or 0. */
+    val glCurrentContext: ULong
+
+    /** Sets the swap interval (0 = immediate, 1 = vsync). */
+    fun glSetSwapInterval(interval: Int): Boolean
+
+    /** The current swap interval, or null. */
+    val glSwapInterval: Int?
+
+    /** Swaps the buffers of the window with [windowId]. */
+    fun glSwapWindow(windowId: Int): Boolean
+
+    /** Destroys an OpenGL context. */
+    fun glDestroyContext(context: ULong)
+
+    // ==================== Vulkan ====================
+
+    /** Loads the Vulkan library; [path] is optional. */
+    fun vulkanLoadLibrary(path: String? = null): Boolean
+
+    /** Unloads the Vulkan library. */
+    fun vulkanUnloadLibrary()
+
+    /** The address of vkGetInstanceProcAddr, or 0. */
+    val vulkanGetVkGetInstanceProcAddr: ULong
+
+    /** The platform-specific Vulkan instance extensions. */
+    val vulkanInstanceExtensions: List<String>
+
+    /**
+     * Creates a Vulkan surface for the window with [windowId], returning the
+     * VkSurfaceKHR handle, or 0 on failure.
+     */
+    fun vulkanCreateSurface(windowId: Int, instance: ULong): ULong
+
+    /** Destroys a Vulkan surface. */
+    fun vulkanDestroySurface(instance: ULong, surface: ULong)
+
+    /** Whether presentation is supported for [physicalDevice] and [queueFamilyIndex]. */
+    fun vulkanGetPresentationSupport(instance: ULong, physicalDevice: ULong, queueFamilyIndex: Int): Boolean
 }

@@ -31,6 +31,10 @@ import cnames.structs.SDL_Renderer
 import cnames.structs.SDL_AudioStream
 import cnames.structs.SDL_Joystick
 import cnames.structs.SDL_Gamepad
+import cnames.structs.SDL_GLContextState
+import cnames.structs.VkInstance_T
+import cnames.structs.VkPhysicalDevice_T
+import cnames.structs.VkSurfaceKHR_T
 
 
 private fun CPointer<ByteVar>.toKStringOrNull(): String? = toKString()
@@ -559,6 +563,11 @@ private fun folderOf(value: Int): SDL_Folder = enumValueOf(
     SDL_Folder.entries,
     value,
 ) { SDL_Folder.SDL_FOLDER_HOME }
+
+private fun glAttrOf(value: Int): SDL_GLAttr = enumValueOf(
+    SDL_GLAttr.entries,
+    value,
+) { SDL_GLAttr.SDL_GL_RED_SIZE }
 
 // =========================================================================
 // Native (cinterop) display
@@ -1509,5 +1518,141 @@ actual object SDL {
             nativeHeap.free(data)
             nativeHeap.free(buttonId)
         }
+    }
+
+    // ==================== OpenGL ====================
+
+    actual fun glLoadLibrary(path: String?): Boolean = SDL_GL_LoadLibrary(path)
+
+    actual fun glUnloadLibrary() {
+        SDL_GL_UnloadLibrary()
+    }
+
+    actual fun glGetProcAddress(proc: String): ULong {
+        val fn = SDL_GL_GetProcAddress(proc) ?: return 0uL
+        return fn.reinterpret<ULongVar>().pointed.value
+    }
+
+    actual fun glExtensionSupported(extension: String): Boolean =
+        SDL_GL_ExtensionSupported(extension)
+
+    actual fun glResetAttributes() {
+        SDL_GL_ResetAttributes()
+    }
+
+    actual fun glSetAttribute(attr: Int, value: Int): Boolean =
+        SDL_GL_SetAttribute(glAttrOf(attr), value)
+
+    actual fun glGetAttribute(attr: Int): Int? = memScoped {
+        val value = alloc<IntVar>()
+        if (SDL_GL_GetAttribute(glAttrOf(attr), value.ptr)) {
+            value.value
+        } else {
+            null
+        }
+    }
+
+    actual fun glCreateContext(windowId: Int): ULong {
+        val window = SDL_GetWindowFromID(windowId.toUInt()) ?: return 0uL
+        val ctx = SDL_GL_CreateContext(window) ?: return 0uL
+        return ctx.reinterpret<ULongVar>().pointed.value
+    }
+
+    actual fun glMakeCurrent(windowId: Int, context: ULong): Boolean {
+        val window = SDL_GetWindowFromID(windowId.toUInt()) ?: return false
+        val ctx = if (context == 0uL) null else context.toLong().toCPointer<SDL_GLContextState>()
+        return SDL_GL_MakeCurrent(window, ctx)
+    }
+
+    actual val glCurrentWindow: Int?
+        get() = SDL_GL_GetCurrentWindow()?.let { SDL_GetWindowID(it).toInt() }
+
+    actual val glCurrentContext: ULong
+        get() {
+            val ctx = SDL_GL_GetCurrentContext() ?: return 0uL
+            return ctx.reinterpret<ULongVar>().pointed.value
+        }
+
+    actual fun glSetSwapInterval(interval: Int): Boolean =
+        SDL_GL_SetSwapInterval(interval)
+
+    actual val glSwapInterval: Int?
+        get() = memScoped {
+            val interval = alloc<IntVar>()
+            if (SDL_GL_GetSwapInterval(interval.ptr)) {
+                interval.value
+            } else {
+                null
+            }
+        }
+
+    actual fun glSwapWindow(windowId: Int): Boolean {
+        val window = SDL_GetWindowFromID(windowId.toUInt()) ?: return false
+        return SDL_GL_SwapWindow(window)
+    }
+
+    actual fun glDestroyContext(context: ULong) {
+        if (context != 0uL) {
+            SDL_GL_DestroyContext(context.toLong().toCPointer<SDL_GLContextState>())
+        }
+    }
+
+    // ==================== Vulkan ====================
+
+    actual fun vulkanLoadLibrary(path: String?): Boolean = SDL_Vulkan_LoadLibrary(path)
+
+    actual fun vulkanUnloadLibrary() {
+        SDL_Vulkan_UnloadLibrary()
+    }
+
+    actual val vulkanGetVkGetInstanceProcAddr: ULong
+        get() {
+            val fn = SDL_Vulkan_GetVkGetInstanceProcAddr() ?: return 0uL
+            return fn.reinterpret<ULongVar>().pointed.value
+        }
+
+    actual val vulkanInstanceExtensions: List<String>
+        get() = memScoped {
+            val count = alloc<UIntVar>()
+            val names = SDL_Vulkan_GetInstanceExtensions(count.ptr)
+            if (names == null) {
+                emptyList()
+            } else {
+                val list = ArrayList<String>(count.value.toInt())
+                for (i in 0 until count.value.toInt()) {
+                    names[i]?.toKString()?.let { list.add(it) }
+                }
+                list
+            }
+        }
+
+    actual fun vulkanCreateSurface(windowId: Int, instance: ULong): ULong {
+        val window = SDL_GetWindowFromID(windowId.toUInt()) ?: return 0uL
+        val surface = nativeHeap.alloc<VkSurfaceKHRVar>()
+        try {
+            val instancePtr = if (instance == 0uL) null else instance.toLong().toCPointer<VkInstance_T>()
+            val ok = SDL_Vulkan_CreateSurface(window, instancePtr, null, surface.ptr)
+            return if (ok) {
+                val vkSurface = surface.value ?: return@vulkanCreateSurface 0uL
+                vkSurface.reinterpret<ULongVar>().pointed.value
+            } else {
+                0uL
+            }
+        } finally {
+            nativeHeap.free(surface)
+        }
+    }
+
+    actual fun vulkanDestroySurface(instance: ULong, surface: ULong) {
+        if (surface != 0uL) {
+            val instancePtr = if (instance == 0uL) null else instance.toLong().toCPointer<VkInstance_T>()
+            SDL_Vulkan_DestroySurface(instancePtr, surface.toLong().toCPointer<VkSurfaceKHR_T>(), null)
+        }
+    }
+
+    actual fun vulkanGetPresentationSupport(instance: ULong, physicalDevice: ULong, queueFamilyIndex: Int): Boolean {
+        val instancePtr = if (instance == 0uL) null else instance.toLong().toCPointer<VkInstance_T>()
+        val devicePtr = if (physicalDevice == 0uL) null else physicalDevice.toLong().toCPointer<VkPhysicalDevice_T>()
+        return SDL_Vulkan_GetPresentationSupport(instancePtr, devicePtr, queueFamilyIndex.toUInt())
     }
 }

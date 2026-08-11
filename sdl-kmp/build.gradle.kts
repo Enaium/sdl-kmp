@@ -168,6 +168,8 @@ kotlin {
                 // LWJGL's public API is annotated with jspecify; make the
                 // annotation classes available to the compiler.
                 implementation("org.jspecify:jspecify:1.0.0")
+                // VkInstance/VkPhysicalDevice handles used by SDL_Vulkan_GetPresentationSupport
+                implementation("org.lwjgl:lwjgl-vulkan:${libs.versions.lwjgl.get()}")
                 runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") { artifact { classifier = "natives-linux" } }
                 runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") { artifact { classifier = "natives-macos" } }
                 runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") { artifact { classifier = "natives-macos-arm64" } }
