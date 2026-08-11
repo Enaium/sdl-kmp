@@ -25,14 +25,16 @@ kotlin {
         val nativeMain = create("nativeMain") {
             dependsOn(getByName("commonMain"))
         }
-        getByName("macosArm64Main").dependsOn(nativeMain)
-        getByName("linuxX64Main").dependsOn(nativeMain)
+        macosArm64Main {
+            dependsOn(nativeMain)
+        }
+        linuxX64Main {
+            dependsOn(nativeMain)
+        }
 
-        getByName("commonMain") {
+        commonMain {
             dependencies {
-                // Consume the artifact published to the local Maven repository
-                // (run `./gradlew :sdl-kmp:publishToMavenLocal` first).
-                implementation("cn.enaium.sdl:sdl-kmp:1.0.0")
+                implementation(project(":sdl-kmp"))
             }
         }
     }

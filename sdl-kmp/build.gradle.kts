@@ -1,9 +1,7 @@
-import java.io.File
-import java.util.Properties
 import org.gradle.internal.os.OperatingSystem
+import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
-import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 
 @OptIn(ExperimentalKotlinGradlePluginApi::class)
 
@@ -35,10 +33,11 @@ fun hasMingwCrossToolchain(): Boolean {
 fun canBuildNativeTarget(targetName: String): Boolean {
     return when {
         hostOs.isMacOsX && (
-            targetName.startsWith("macos") ||
-                targetName.startsWith("ios") ||
-                targetName.startsWith("tvos")
-            ) -> true
+                targetName.startsWith("macos") ||
+                        targetName.startsWith("ios") ||
+                        targetName.startsWith("tvos")
+                ) -> true
+
         hostOs.isLinux && targetName == "linuxX64" -> true
         hostOs.isLinux && targetName == "mingwX64" && hasMingwCrossToolchain() -> true
         else -> false
@@ -147,19 +146,19 @@ kotlin {
 
     // ==================== Source sets ====================
     sourceSets {
-        getByName("commonMain") {
+        commonMain {
             dependencies {
                 implementation(kotlin("stdlib-common"))
             }
         }
 
-        getByName("commonTest") {
+        commonTest {
             dependencies {
                 implementation(libs.kotlin.test)
             }
         }
 
-        getByName("jvmMain") {
+        jvmMain {
             dependencies {
                 // SDL3 on the JVM comes from LWJGL 3.4.x (org.lwjgl:lwjgl-sdl).
                 // LWJGL does not support Android, so there is no Android target.
@@ -170,18 +169,50 @@ kotlin {
                 implementation("org.jspecify:jspecify:1.0.0")
                 // VkInstance/VkPhysicalDevice handles used by SDL_Vulkan_GetPresentationSupport
                 implementation("org.lwjgl:lwjgl-vulkan:${libs.versions.lwjgl.get()}")
-                runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") { artifact { classifier = "natives-linux" } }
-                runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") { artifact { classifier = "natives-macos" } }
-                runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") { artifact { classifier = "natives-macos-arm64" } }
-                runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") { artifact { classifier = "natives-windows" } }
-                runtimeOnly("org.lwjgl:lwjgl-sdl:${libs.versions.lwjgl.get()}") { artifact { classifier = "natives-linux" } }
-                runtimeOnly("org.lwjgl:lwjgl-sdl:${libs.versions.lwjgl.get()}") { artifact { classifier = "natives-macos" } }
-                runtimeOnly("org.lwjgl:lwjgl-sdl:${libs.versions.lwjgl.get()}") { artifact { classifier = "natives-macos-arm64" } }
-                runtimeOnly("org.lwjgl:lwjgl-sdl:${libs.versions.lwjgl.get()}") { artifact { classifier = "natives-windows" } }
+                runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") {
+                    artifact {
+                        classifier = "natives-linux"
+                    }
+                }
+                runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") {
+                    artifact {
+                        classifier = "natives-macos"
+                    }
+                }
+                runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") {
+                    artifact {
+                        classifier = "natives-macos-arm64"
+                    }
+                }
+                runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") {
+                    artifact {
+                        classifier = "natives-windows"
+                    }
+                }
+                runtimeOnly("org.lwjgl:lwjgl-sdl:${libs.versions.lwjgl.get()}") {
+                    artifact {
+                        classifier = "natives-linux"
+                    }
+                }
+                runtimeOnly("org.lwjgl:lwjgl-sdl:${libs.versions.lwjgl.get()}") {
+                    artifact {
+                        classifier = "natives-macos"
+                    }
+                }
+                runtimeOnly("org.lwjgl:lwjgl-sdl:${libs.versions.lwjgl.get()}") {
+                    artifact {
+                        classifier = "natives-macos-arm64"
+                    }
+                }
+                runtimeOnly("org.lwjgl:lwjgl-sdl:${libs.versions.lwjgl.get()}") {
+                    artifact {
+                        classifier = "natives-windows"
+                    }
+                }
             }
         }
 
-        getByName("jvmTest") {
+        jvmTest {
             dependencies {
                 implementation(libs.junit.jupiter)
                 runtimeOnly(libs.junit.platform.launcher)
@@ -223,7 +254,7 @@ fun registerNativeBuildTasks(targetName: String, cmakeFlags: List<String> = empt
 
     tasks.matching {
         it.name.startsWith("cinteropSdl") &&
-            it.name.endsWith(targetName.replaceFirstChar { c -> c.uppercase() })
+                it.name.endsWith(targetName.replaceFirstChar { c -> c.uppercase() })
     }.configureEach {
         dependsOn(buildTask)
         // The cinterop task's custom up-to-date check only watches headers and
@@ -332,8 +363,8 @@ mavenPublishing {
         name.set("sdl-kmp")
         description.set(
             "Kotlin Multiplatform bindings for SDL3. " +
-                "JVM uses the official LWJGL bindings; native targets embed the statically " +
-                "compiled SDL3 library into the published klib.",
+                    "JVM uses the official LWJGL bindings; native targets embed the statically " +
+                    "compiled SDL3 library into the published klib.",
         )
         url.set("https://github.com/Enaium/sdl-kmp")
         inceptionYear.set("2026")
