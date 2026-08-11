@@ -47,5 +47,6 @@ tasks.register<JavaExec>("runJvm") {
     val compilation = kotlin.targets.getByName("jvm").compilations.getByName("main")
     classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
     // JDK 22+ requires explicit native access for JNI-based libraries like LWJGL.
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    // macOS requires -XstartOnFirstThread so AppKit/Cocoa can initialise.
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "-XstartOnFirstThread")
 }
