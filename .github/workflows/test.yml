@@ -1,0 +1,115 @@
+name: Test
+
+"on":
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+# Builds and tests each platform on the runner that can build it:
+#
+#   macOS ARM64 -> :sdl-kmp metadata + jvm + all Apple target klibs
+#                  (with the embedded SDL3 static library), JVM + native
+#                  tests, and the example app (native + JVM, headless)
+#   Linux x64   -> linuxX64 klib (with embedded static library) and the
+#                  cross-compiled mingwX64 klib, JVM + native tests, and
+#                  the example app (native, headless)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-macos:
+    name: Test macOS ARM64
+    runs-on: macos-14
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Configure JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Decode signing key
+        run: |
+          echo "${{ secrets.SIGNING_KEY }}" | tr -d ' \n' | base64 -d > "$RUNNER_TEMP/signing-key.gpg"
+          ls -la "$RUNNER_TEMP/signing-key.gpg"
+          head -c 16 "$RUNNER_TEMP/signing-key.gpg" | od -c | head -2
+
+      - name: Publish all platforms to Maven Local
+        run: >
+          ./gradlew --no-daemon --stacktrace
+          -Psigning.keyId="${{ secrets.SIGNING_KEY_ID }}"
+          -Psigning.secretKeyRingFile="${{ runner.temp }}/signing-key.gpg"
+          -Psigning.password="${{ secrets.SIGNING_PASSWORD }}"
+          :sdl-kmp:publishToMavenLocal
+
+      - name: Run JVM tests
+        run: ./gradlew --no-daemon :sdl-kmp:jvmTest
+
+      - name: Run native tests (macosArm64)
+        run: ./gradlew --no-daemon :sdl-kmp:macosArm64Test
+
+      - name: Run example (JVM, headless)
+        run: SDL_VIDEO_DRIVER=dummy ./gradlew --no-daemon :example:runJvm
+
+      - name: Run example (macosArm64, headless)
+        run: SDL_VIDEO_DRIVER=dummy ./gradlew --no-daemon :example:runDebugExecutableMacosArm64
+
+  test-linux:
+    name: Test Linux x64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Configure JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxext-dev libxcursor-dev libxi-dev libxfixes-dev \
+            libxrandr-dev libxrender-dev libxss-dev libxtst-dev \
+            gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Decode signing key
+        run: |
+          echo "${{ secrets.SIGNING_KEY }}" | tr -d ' \n' | base64 -d > "$RUNNER_TEMP/signing-key.gpg"
+          ls -la "$RUNNER_TEMP/signing-key.gpg"
+          head -c 16 "$RUNNER_TEMP/signing-key.gpg" | od -c | head -2
+
+      - name: Publish linuxX64/mingwX64 klibs to Maven Local
+        run: >
+          ./gradlew --no-daemon --stacktrace
+          -Psigning.keyId="${{ secrets.SIGNING_KEY_ID }}"
+          -Psigning.secretKeyRingFile="${{ runner.temp }}/signing-key.gpg"
+          -Psigning.password="${{ secrets.SIGNING_PASSWORD }}"
+          :sdl-kmp:publishLinuxX64PublicationToMavenLocal
+          :sdl-kmp:publishMingwX64PublicationToMavenLocal
+
+      - name: Run JVM tests
+        run: ./gradlew --no-daemon :sdl-kmp:jvmTest
+
+      - name: Run native tests (linuxX64)
+        run: ./gradlew --no-daemon :sdl-kmp:linuxX64Test
+
+      - name: Run example (linuxX64, headless)
+        run: SDL_VIDEO_DRIVER=dummy ./gradlew --no-daemon :example:runDebugExecutableLinuxX64

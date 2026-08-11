@@ -1,0 +1,13 @@
+package = sdl3
+headers = SDL3/SDL.h SDL3/SDL_main.h cinterop_helpers.h
+compilerOpts = -std=c11 -DSDL_MAIN_HANDLED
+
+# Platform-specific linker options (suffixes are Kotlin/Native family names,
+# lowercase: osx/ios/tvos/linux/mingw). These are baked into the produced
+# klib and applied when the consumer's final binary is linked.
+# The SDL3 static library references these frameworks/system libraries.
+linkerOpts.osx = -framework Foundation -framework CoreVideo -framework CoreGraphics -framework QuartzCore -framework Metal -framework CoreAudio -framework AudioToolbox -framework AVFoundation -framework CoreMedia -framework ForceFeedback -framework Security -framework Cocoa -framework Carbon -framework IOKit -framework GameController -framework CoreBluetooth -framework UserNotifications -weak_framework CoreHaptics -weak_framework UniformTypeIdentifiers
+linkerOpts.ios = -framework Foundation -framework CoreVideo -framework CoreGraphics -framework QuartzCore -framework Metal -framework CoreAudio -framework AudioToolbox -framework AVFoundation -framework Security -framework UIKit -framework OpenGLES -framework GameController -framework CoreBluetooth -framework UserNotifications -framework CoreMotion -weak_framework CoreHaptics -weak_framework UniformTypeIdentifiers
+linkerOpts.tvos = -framework Foundation -framework CoreVideo -framework CoreGraphics -framework QuartzCore -framework Metal -framework CoreAudio -framework AudioToolbox -framework AVFoundation -framework Security -framework UIKit -framework GameController -framework CoreBluetooth -framework UserNotifications -framework CoreMotion -weak_framework CoreHaptics -weak_framework UniformTypeIdentifiers
+linkerOpts.linux = -lm -ldl -lpthread
+linkerOpts.mingw = -luser32 -lgdi32 -lwinmm -lversion -lsetupapi -limm32 -lole32 -luuid -lcomdlg32 -lshell32
