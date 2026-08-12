@@ -29,11 +29,12 @@ package cn.enaium.sdl
 /** Shader formats (values match SDL3's SDL_GPUShaderFormat). */
 object SDLGPUShaderFormat {
     const val INVALID = 0
-    const val SPIRV = 1 shl 0
-    const val DXIL = 1 shl 1
+    const val PRIVATE = 1 shl 0
+    const val SPIRV = 1 shl 1
     const val DXBC = 1 shl 2
-    const val MSL = 1 shl 3
-    const val METALLIB = 1 shl 4
+    const val DXIL = 1 shl 3
+    const val MSL = 1 shl 4
+    const val METALLIB = 1 shl 5
 }
 
 /** Primitive types (values match SDL3's SDL_GPUPrimitiveType). */
@@ -471,6 +472,13 @@ interface SDLGPUDevice : AutoCloseable {
 
     /** The swapchain texture format of [window], or null on failure. */
     fun getWindowFormat(window: SDLWindow): Int?
+
+    /**
+     * Acquires a texture for drawing to [window] within [commandBuffer];
+     * returns null when the swapchain is unavailable (in that case the
+     * command buffer must still be submitted or cancelled).
+     */
+    fun acquireSwapchainTexture(commandBuffer: SDLGPUCommandBuffer, window: SDLWindow): SDLGPUWindowTexture?
 
     /** Acquires a texture for drawing to [window]; returns null on failure. */
     fun acquireSwapchainTexture(window: SDLWindow): SDLGPUWindowTexture?

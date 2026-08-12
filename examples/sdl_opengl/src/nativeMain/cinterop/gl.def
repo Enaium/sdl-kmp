@@ -1,0 +1,6 @@
+package = sdlkmpopengl
+headers = sdl_kmp_gl.h
+compilerOpts = -std=c11
+
+linkerOpts.osx = -framework OpenGL
+linkerOpts.android = -lEGL -lGLESv1_CM -lGLESv2

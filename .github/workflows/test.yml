@@ -12,8 +12,8 @@ name: Test
 #                  cross-compiled mingwX64 klib, JVM + native tests, and
 #                  the example app (native, headless)
 #   Android x64 -> the four androidNative klibs (with the embedded static
-#                  library built via the Android NDK) and the example-android
-#                  APK (assembleDebug)
+#                  library built via the Android NDK) and the example APKs
+#                  (assembleDebug)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -63,10 +63,10 @@ jobs:
         run: ./gradlew --no-daemon :sdl-kmp:macosArm64Test
 
       - name: Run example (JVM, headless)
-        run: SDL_VIDEO_DRIVER=dummy ./gradlew --no-daemon :example:jvmRun
+        run: SDL_VIDEO_DRIVER=dummy ./gradlew --no-daemon :examples:sdl_renderer:jvmRun
 
       - name: Run example (macosArm64, headless)
-        run: SDL_VIDEO_DRIVER=dummy ./gradlew --no-daemon :example:runDebugExecutableMacosArm64
+        run: SDL_VIDEO_DRIVER=dummy ./gradlew --no-daemon :examples:sdl_renderer:runDebugExecutableMacosArm64
 
   test-linux:
     name: Test Linux x64
@@ -121,7 +121,7 @@ jobs:
         run: ./gradlew --no-daemon :sdl-kmp:linuxX64Test
 
       - name: Run example (linuxX64, headless)
-        run: SDL_VIDEO_DRIVER=dummy ./gradlew --no-daemon :example:runDebugExecutableLinuxX64
+        run: SDL_VIDEO_DRIVER=dummy ./gradlew --no-daemon :examples:sdl_renderer:runDebugExecutableLinuxX64
 
   test-android:
     name: Test Android (androidNative + APK)
@@ -142,7 +142,7 @@ jobs:
       # but SDL3's static library needs the Android NDK.
       - name: Install Android NDK
         run: |
-          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.0.12077973" "platforms;android-35" >/dev/null
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.0.12077973" "platforms;android-37" >/dev/null
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -159,5 +159,8 @@ jobs:
           :sdl-kmp:compileKotlinAndroidNativeX64
           :sdl-kmp:compileKotlinAndroidNativeX86
 
-      - name: Assemble example Android APK
-        run: ./gradlew --no-daemon --stacktrace :example-android:assembleDebug
+      - name: Assemble example Android APKs
+        run: >
+          ./gradlew --no-daemon --stacktrace
+          :examples:sdl_renderer:android:assembleDebug
+          :examples:sdl_gpu:android:assembleDebug

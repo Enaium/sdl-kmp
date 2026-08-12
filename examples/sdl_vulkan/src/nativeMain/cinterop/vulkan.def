@@ -1,0 +1,3 @@
+package = sdlkmpvulkan
+headers = sdl_kmp_vulkan.h
+compilerOpts = -std=c11

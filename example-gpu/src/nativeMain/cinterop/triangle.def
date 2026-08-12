@@ -1,6 +1,0 @@
-package = sdlkmptriangle
-headers = sdl_kmp_triangle.h
-compilerOpts = -std=c11
-
-linkerOpts.osx = -framework OpenGL
-linkerOpts.android = -lEGL -lGLESv1_CM -lGLESv2

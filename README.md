@@ -88,15 +88,28 @@ fun main() {
 - The `SDL_VIDEO_DRIVER=dummy` hint (environment variable or `SDL.setHint`) makes SDL run headless — useful for CI and servers.
 - **macOS JVM**: requires `-XstartOnFirstThread` JVM argument (so AppKit/Cocoa can initialise). The example `runJvm` task already sets this.
 - On Linux the static SDL3 is built with the X11/Wayland drivers loaded dynamically (`dlopen`), so the published klib has no link-time dependency on X11.
-- **Android**: building an `androidNative*` target requires an installed Android NDK (found under `$ANDROID_HOME/ndk`); the SDL3 static library is cross-compiled with its CMake toolchain. At runtime the app must be launched through `org.libsdl.app.SDLActivity` (or a subclass), which loads the shared library and calls its exported `SDL_main` (see the `example-android` module).
+- **Android**: building an `androidNative*` target requires an installed Android NDK (found under `$ANDROID_HOME/ndk`); the SDL3 static library is cross-compiled with its CMake toolchain. At runtime the app must be launched through `org.libsdl.app.SDLActivity` (or a subclass), which loads the shared library and calls its exported `SDL_main` (see the `examples/sdl_renderer/android` module).
 
 ### Native linking
 
 The SDL3 static library is embedded in each target's published klib (built per target by the `sdl-kmp/native/CMakeLists.txt` wrapper). The required frameworks/system libraries are recorded in the cinterop klib as `linkerOpts` (see `sdl.def`) and are applied automatically when the consumer's final binary is linked.
 
-## Example
+## Examples
 
-The `example` module is a small "bouncing box" demo. All logic lives in `commonMain`; platform entry points only provide `main()`.
+All examples live under `examples/` as standalone KMP modules; each provides
+`commonMain` logic and thin platform entry points (`main()` / `SDL_main`).
+
+- **`examples/sdl_renderer`** — "bouncing box" demo using `SDL_Renderer`
+  (renderer, textures, audio, input). Runs on JVM, macOS, Linux and Android
+  (with its `android` submodule APK).
+- **`examples/sdl_vulkan`** — minimal Vulkan triangle (gradient shaders) on
+  JVM and macOS.
+- **`examples/sdl_opengl`** — minimal OpenGL 3.3 core / GLES 3 triangle on
+  JVM and macOS.
+- **`examples/sdl_gpu`** — triangle rendered through the SDL3 GPU API
+  (cross-backend: Metal on macOS, Vulkan on Android) entirely from
+  `commonMain`. Runs on JVM, macOS and Android (with its `android` submodule
+  APK).
 
 ```bash
 # Publish the library to the local Maven repository first (macOS builds all
@@ -104,28 +117,36 @@ The `example` module is a small "bouncing box" demo. All logic lives in `commonM
 ./gradlew :sdl-kmp:publishToMavenLocal
 
 # JVM (pass SDL_VIDEO_DRIVER=dummy for headless mode)
-./gradlew :example:runJvm
-SDL_VIDEO_DRIVER=dummy ./gradlew :example:runJvm
+./gradlew :examples:sdl_renderer:jvmRun
+SDL_VIDEO_DRIVER=dummy ./gradlew :examples:sdl_renderer:jvmRun
 
 # Native
-./gradlew :example:runDebugExecutableMacosArm64
-SDL_VIDEO_DRIVER=dummy ./gradlew :example:runDebugExecutableLinuxX64
+./gradlew :examples:sdl_renderer:runDebugExecutableMacosArm64
+SDL_VIDEO_DRIVER=dummy ./gradlew :examples:sdl_renderer:runDebugExecutableLinuxX64
+
+# GPU examples (macOS: needs a display; Vulkan needs a Vulkan driver)
+./gradlew :examples:sdl_vulkan:jvmRun
+./gradlew :examples:sdl_opengl:jvmRun
+./gradlew :examples:sdl_gpu:jvmRun
+./gradlew :examples:sdl_gpu:runDebugExecutableMacosArm64
 ```
 
-### Android example
+### Android examples
 
-The `example-android` module is an Android application (AGP) that runs the same
-demo. `example` builds `libmain.so` for every `androidNative` ABI (exporting
-`SDL_main` from `androidMain`); `example-android` copies those into its `jniLibs`
-and its `MainActivity` extends `org.libsdl.app.SDLActivity` (loaded from the SDL
+The `sdl_renderer` and `sdl_gpu` examples each have an `android` submodule:
+an Android application (AGP) that runs the same demo. The KMP module builds
+`libmain.so` for every `androidNative` ABI (exporting `SDL_main` from
+`androidMain`); the Android app copies those into its `jniLibs` and its
+`MainActivity` extends `org.libsdl.app.SDLActivity` (loaded from the SDL
 submodule so it matches the statically linked SDL3 version), which loads
 `libmain.so` and calls `SDL_main`.
 
 ```bash
-# Build the APK (requires an Android NDK; install the app on a device/emulator
+# Build the APKs (requires an Android NDK; install the app on a device/emulator
 # with adb).
-./gradlew :example-android:assembleDebug
-adb install -r example-android/build/outputs/apk/debug/example-android-debug.apk
+./gradlew :examples:sdl_renderer:android:assembleDebug
+./gradlew :examples:sdl_gpu:android:assembleDebug
+adb install -r examples/sdl_renderer/android/build/outputs/apk/debug/android-debug.apk
 ```
 
 ## Development
@@ -138,7 +159,7 @@ adb install -r example-android/build/outputs/apk/debug/example-android-debug.apk
 
 ## GitHub Actions
 
-- `.github/workflows/test.yml` — manual trigger: macOS builds all Apple klibs and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `mingwX64`, and runs the example headless; Android installs the NDK, builds the four `androidNative` klibs and assembles the `example-android` APK.
+- `.github/workflows/test.yml` — manual trigger: macOS builds all Apple klibs and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `mingwX64`, and runs the renderer example headless; Android installs the NDK, builds the four `androidNative` klibs and assembles the `sdl_renderer`/`sdl_gpu` APKs.
 - `.github/workflows/publish.yml` — manual workflow that publishes the metadata + JVM + Apple klibs from `macos-14`, the `linuxX64`/`mingwX64` klibs from `ubuntu-latest`, and the four `androidNative` klibs from `ubuntu-latest` (with the NDK) to Maven Central.
 
 Required secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` (base64 GPG keyring), `SIGNING_KEY_ID`, `SIGNING_PASSWORD`.

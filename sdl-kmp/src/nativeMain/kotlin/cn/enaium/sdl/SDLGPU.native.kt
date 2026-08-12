@@ -445,6 +445,24 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
         return if (format.value == 0u) null else format.value.toInt()
     }
 
+    override fun acquireSwapchainTexture(commandBuffer: SDLGPUCommandBuffer, window: SDLWindow): SDLGPUWindowTexture? = memScoped {
+        val native = (window as? NativeSDLWindow)?.check()
+            ?: throw IllegalArgumentException("window is not a native SDL window")
+        val cmd = (commandBuffer as? NativeSDLGPUCommandBuffer)?.raw
+            ?: throw IllegalArgumentException("command buffer is not a native SDL GPU command buffer")
+        val texture = alloc<CPointerVar<SDL_GPUTexture>>()
+        val width = alloc<UIntVar>()
+        val height = alloc<UIntVar>()
+        if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmd, native, texture.ptr, width.ptr, height.ptr)) {
+            return null
+        }
+        val tex = texture.value
+        SDLGPUWindowTexture(
+            texture = tex?.let { NativeSDLGPUTexture(it, this@NativeSDLGPUDevice) },
+            srcRect = SDLRect(0, 0, width.value.toInt(), height.value.toInt()),
+        )
+    }
+
     override fun acquireSwapchainTexture(window: SDLWindow): SDLGPUWindowTexture? = memScoped {
         val native = (window as? NativeSDLWindow)?.check()
             ?: throw IllegalArgumentException("window is not a native SDL window")
@@ -495,10 +513,13 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
         numStorageBuffers: Int,
         numUniformBuffers: Int,
     ): SDLGPUShader? = memScoped {
-        val codePtr = gpuShaderCode(code)
+        // The code buffer must stay alive while SDL_CreateGPUShader reads it,
+        // so allocate it in this scope (which outlives the call).
+        val arr = allocArray<UByteVar>(code.size)
+        for (i in code.indices) arr[i] = code[i].toUByte()
         val shader = SDL_kmp_CreateGPUShader(
             check(),
-            codePtr,
+            arr,
             code.size,
             entryPoint,
             format.toUInt(),
@@ -665,6 +686,7 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
             src.transfer_buffer = tbuffer
             src.offset = 0u
             val region = alloc<SDL_GPUBufferRegion>()
+            region.buffer = b
             region.offset = offset.toUInt()
             region.size = data.size.toUInt()
             SDL_UploadToGPUBuffer(pass, src.ptr, region.ptr, false)
@@ -723,12 +745,6 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
     }
 }
 
-private fun gpuShaderCode(code: ByteArray): CPointer<UByteVar>? = memScoped {
-    val arr = allocArray<UByteVar>(code.size)
-    for (i in code.indices) arr[i] = code[i].toUByte()
-    arr
-}
-
 private fun gpuTextureFormatOf(value: Int): SDL_GPUTextureFormat =
     SDL_GPUTextureFormat.entries.firstOrNull { it.value.toInt() == value } ?: SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
 
@@ -753,7 +769,14 @@ actual object SDLGPU {
         )
 
     actual fun createDevice(debugMode: Boolean): SDLGPUDevice? {
-        val device = SDL_CreateGPUDevice(0u, debugMode, null as String?) ?: return null
+        // format_flags=0 means "any shader format" per the SDL3 docs, but
+        // SDL_GPU_FillProperties only sets the shader properties for formats
+        // present in the mask; with 0 no backend's PrepareDriver accepts the
+        // device, so pass the formats we support explicitly.
+        val formats = SDLGPUShaderFormat.SPIRV.toUInt() or SDLGPUShaderFormat.MSL.toUInt() or
+            SDLGPUShaderFormat.DXIL.toUInt() or SDLGPUShaderFormat.DXBC.toUInt() or
+            SDLGPUShaderFormat.METALLIB.toUInt()
+        val device = SDL_CreateGPUDevice(formats, debugMode, null as String?) ?: return null
         return NativeSDLGPUDevice(device)
     }
 
