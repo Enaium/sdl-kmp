@@ -66,11 +66,13 @@ fun runExample() {
     // servers the dummy driver is needed; on a desktop the native driver
     // (cocoa/x11) should work. If the initial attempt fails and the
     // dummy driver succeeds we assume headless — otherwise report the error.
+    // The dummy fallback skips AUDIO: headless runners often have no audio
+    // device at all, and the demo degrades gracefully without it.
     var headless = false
     if (!SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS or SDLInitFlags.AUDIO)) {
         SDL.setHint("SDL_VIDEO_DRIVER", "dummy")
-        if (SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS or SDLInitFlags.AUDIO)) {
-            println("video init fell back to the dummy driver — running headless")
+        if (SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)) {
+            println("video init fell back to the dummy driver — running headless (audio skipped)")
             headless = true
         } else {
             error("SDL_Init(VIDEO) failed: ${SDL.error()}\nMake sure a display is available, or set SDL_VIDEO_DRIVER=dummy to run headless.")
@@ -88,7 +90,11 @@ fun runExample() {
 
     // ---------- audio: enumerate devices ----------
     val playbackDevices = SDL.audioPlaybackDevices
-    println("Audio playback devices: ${playbackDevices.map { it to SDL.getAudioDeviceName(it) }}")
+    if (playbackDevices.isNotEmpty()) {
+        println("Audio playback devices: ${playbackDevices.map { it to SDL.getAudioDeviceName(it) }}")
+    } else {
+        println("Audio playback devices: none")
+    }
 
     SDL.createWindow(
         title = "sdl-kmp example",
