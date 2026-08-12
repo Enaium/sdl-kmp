@@ -28,12 +28,25 @@ fun hasMingwCrossToolchain(): Boolean {
     }
 }
 
+// Reads sdk.dir from local.properties (the standard place Gradle's Android
+// plugins put the SDK path, e.g. /Users/<user>/Library/Android/sdk).
+fun localSdkDir(): String? {
+    val f = rootProject.file("local.properties")
+    if (!f.isFile) return null
+    return f.readLines()
+        .firstOrNull { it.trimStart().startsWith("sdk.dir=") }
+        ?.substringAfter('=')
+        ?.trim()
+}
+
 // Locates an installed Android NDK, preferring the highest version under
-// $ANDROID_HOME (or $ANDROID_SDK_ROOT, or ~/Android/Sdk). androidNative
-// targets cross-compile the SDL3 static library with this toolchain.
+// $ANDROID_HOME (or $ANDROID_SDK_ROOT, or local.properties' sdk.dir, or
+// ~/Android/Sdk). androidNative targets cross-compile the SDL3 static library
+// with this toolchain.
 fun androidNdkPath(): String? {
     val home = System.getenv("ANDROID_HOME")
         ?: System.getenv("ANDROID_SDK_ROOT")
+        ?: localSdkDir()
         ?: System.getProperty("user.home") + "/Android/Sdk"
     val ndkDir = File(home, "ndk")
     if (!ndkDir.isDirectory) return null
