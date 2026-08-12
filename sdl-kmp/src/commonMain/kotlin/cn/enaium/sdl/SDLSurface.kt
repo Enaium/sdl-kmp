@@ -33,6 +33,9 @@ interface SDLSurface : AutoCloseable {
     /** The surface width in pixels. */
     val width: Int
 
+    /** The raw SDL handle address, or 0 after [close]. On native, [cn.enaium.sdl.nativePtr] converts it to the typed pointer. */
+    val ptr: Long
+
     /** The surface height in pixels. */
     val height: Int
 

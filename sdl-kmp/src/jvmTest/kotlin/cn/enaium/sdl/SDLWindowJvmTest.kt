@@ -73,6 +73,54 @@ class SDLWindowJvmTest {
         }
         SDL.quit()
     }
+
+    @Test
+    fun rawPointers() {
+        SDL.setMainReady()
+        assertTrue(SDL.setHint("SDL_VIDEO_DRIVER", "dummy"))
+        assertTrue(SDL.init(SDLInitFlags.VIDEO))
+
+        SDL.createWindow("ptr test", 320, 240).use { window ->
+            assertTrue(window.ptr != 0L)
+
+            SDL.createRenderer(window).use { renderer ->
+                assertTrue(renderer.ptr != 0L)
+
+                val texture = renderer.createTexture(
+                    format = SDLPixelFormat.RGBA8888,
+                    access = SDLTextureAccess.STREAMING,
+                    width = 16,
+                    height = 16,
+                )
+                assertTrue(texture.ptr != 0L)
+                texture.close()
+                assertEquals(0L, texture.ptr)
+            }
+        }
+
+        SDL.createSurface(4, 4, SDLPixelFormat.RGBA8888).use { surface ->
+            assertTrue(surface.ptr != 0L)
+        }
+
+        SDL.quit()
+    }
+
+    @Test
+    fun rawEventPoll() {
+        SDL.setMainReady()
+        assertTrue(SDL.setHint("SDL_VIDEO_DRIVER", "dummy"))
+        assertTrue(SDL.init(SDLInitFlags.VIDEO))
+        SDL.createWindow("raw event", 160, 120).use {
+            val deadline = SDL.getTicks() + 200u
+            while (SDL.getTicks() < deadline) {
+                SDL.pollEventRaw()?.use { raw ->
+                    assertTrue(raw.ptr != 0L)
+                }
+                SDL.delay(5)
+            }
+        }
+        SDL.quit()
+    }
 }
 
 class SDLExtendedApiJvmTest {

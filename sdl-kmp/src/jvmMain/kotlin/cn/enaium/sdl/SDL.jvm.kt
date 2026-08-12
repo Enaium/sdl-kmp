@@ -122,10 +122,29 @@ private fun SDL_Event.toSDLEvent(): SDLEvent {
 }
 
 // =========================================================================
+// JVM (LWJGL) raw event
+// =========================================================================
+
+internal class JvmSDLEventRaw internal constructor(raw: SDL_Event) : SDLEventRaw {
+
+    private val raw: SDL_Event = raw
+
+    override val ptr: Long
+        get() = raw.address()
+
+    override fun close() {
+        raw.free()
+    }
+}
+
+// =========================================================================
 // JVM (LWJGL) window
 // =========================================================================
 
-internal class JvmSDLWindow internal constructor(internal var ptr: Long) : SDLWindow {
+internal class JvmSDLWindow internal constructor(ptr: Long) : SDLWindow {
+
+    override var ptr: Long = ptr
+        private set
 
     override val id: Int
         get() = SDLVideo.SDL_GetWindowID(ptr)
@@ -293,7 +312,10 @@ internal class JvmSDLWindow internal constructor(internal var ptr: Long) : SDLWi
 // JVM (LWJGL) renderer
 // =========================================================================
 
-internal class JvmSDLRenderer internal constructor(internal var ptr: Long) : SDLRenderer {
+internal class JvmSDLRenderer internal constructor(ptr: Long) : SDLRenderer {
+
+    override var ptr: Long = ptr
+        private set
 
     override val name: String?
         get() = SDLRender.SDL_GetRendererName(ptr)
@@ -601,6 +623,26 @@ actual object SDL {
             return if (SDLEvents.SDL_WaitEvent(event)) event.toSDLEvent() else null
         } finally {
             event.free()
+        }
+    }
+
+    actual fun pollEventRaw(): SDLEventRaw? {
+        val event = SDL_Event.calloc()
+        return if (SDLEvents.SDL_PollEvent(event)) {
+            JvmSDLEventRaw(event)
+        } else {
+            event.free()
+            null
+        }
+    }
+
+    actual fun waitEventRaw(): SDLEventRaw? {
+        val event = SDL_Event.calloc()
+        return if (SDLEvents.SDL_WaitEvent(event)) {
+            JvmSDLEventRaw(event)
+        } else {
+            event.free()
+            null
         }
     }
 
@@ -1136,9 +1178,14 @@ internal class JvmSDLDisplay(override val id: Int) : SDLDisplay {
 // =========================================================================
 
 internal class JvmSDLTexture internal constructor(
-    internal var texture: SDL_Texture?,
+    texture: SDL_Texture?,
     internal val renderer: JvmSDLRenderer,
 ) : SDLTexture {
+
+    internal var texture: SDL_Texture? = texture
+
+    override val ptr: Long
+        get() = texture?.address() ?: 0L
 
     private fun check(): SDL_Texture =
         texture ?: throw IllegalStateException("SDL texture is closed")
@@ -1234,9 +1281,14 @@ internal class JvmSDLTexture internal constructor(
 // =========================================================================
 
 internal class JvmSDLSurface internal constructor(
-    internal var surface: SDL_Surface?,
+    surface: SDL_Surface?,
     internal val owned: Boolean,
 ) : cn.enaium.sdl.SDLSurface {
+
+    internal var surface: SDL_Surface? = surface
+
+    override val ptr: Long
+        get() = surface?.address() ?: 0L
 
     internal fun check(): SDL_Surface =
         surface ?: throw IllegalStateException("SDL surface is closed")
@@ -1357,8 +1409,11 @@ internal class JvmSDLAudioDevice internal constructor(
 }
 
 internal class JvmSDLAudioStream internal constructor(
-    internal var ptr: Long,
+    ptr: Long,
 ) : SDLAudioStream {
+
+    override var ptr: Long = ptr
+        private set
 
     override fun putData(data: ByteArray): Boolean {
         val buffer = MemoryUtil.memAlloc(data.size)
@@ -1404,8 +1459,11 @@ internal class JvmSDLAudioStream internal constructor(
 // =========================================================================
 
 internal class JvmSDLJoystick internal constructor(
-    internal var ptr: Long,
+    ptr: Long,
 ) : SDLJoystick {
+
+    override var ptr: Long = ptr
+        private set
 
     override val id: Int get() = LwjglSDLJoystick.SDL_GetJoystickID(ptr)
     override val name: String? get() = LwjglSDLJoystick.SDL_GetJoystickName(ptr)
@@ -1443,8 +1501,11 @@ internal class JvmSDLJoystick internal constructor(
 }
 
 internal class JvmSDLGamepad internal constructor(
-    internal var ptr: Long,
+    ptr: Long,
 ) : SDLGamepad {
+
+    override var ptr: Long = ptr
+        private set
 
     override val id: Int get() = LwjglSDLGamepad.SDL_GetGamepadID(ptr)
     override val name: String? get() = LwjglSDLGamepad.SDL_GetGamepadName(ptr)

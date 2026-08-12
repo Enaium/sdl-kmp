@@ -43,10 +43,15 @@ private fun CPointer<ByteVar>.toKStringOrNull(): String? = toKString()
 // Native (cinterop) window
 // =========================================================================
 
-internal class NativeSDLWindow internal constructor(internal var ptr: CPointer<SDL_Window>?) : SDLWindow {
+internal class NativeSDLWindow internal constructor(raw: CPointer<SDL_Window>?) : SDLWindow {
+
+    internal var raw: CPointer<SDL_Window>? = raw
+
+    override val ptr: Long
+        get() = raw?.rawValue?.toLong() ?: 0L
 
     internal fun check(): CPointer<SDL_Window> =
-        ptr ?: throw IllegalStateException("SDL window is closed")
+        raw ?: throw IllegalStateException("SDL window is closed")
 
     override val id: Int
         get() = SDL_GetWindowID(check()).toInt()
@@ -212,8 +217,8 @@ internal class NativeSDLWindow internal constructor(internal var ptr: CPointer<S
     }
 
     override fun close() {
-        val window = ptr ?: return
-        ptr = null
+        val window = raw ?: return
+        raw = null
         SDL_DestroyWindow(window)
     }
 }
@@ -222,10 +227,15 @@ internal class NativeSDLWindow internal constructor(internal var ptr: CPointer<S
 // Native (cinterop) renderer
 // =========================================================================
 
-internal class NativeSDLRenderer internal constructor(internal var ptr: CPointer<SDL_Renderer>?) : SDLRenderer {
+internal class NativeSDLRenderer internal constructor(raw: CPointer<SDL_Renderer>?) : SDLRenderer {
+
+    internal var raw: CPointer<SDL_Renderer>? = raw
+
+    override val ptr: Long
+        get() = raw?.rawValue?.toLong() ?: 0L
 
     internal fun check(): CPointer<SDL_Renderer> =
-        ptr ?: throw IllegalStateException("SDL renderer is closed")
+        raw ?: throw IllegalStateException("SDL renderer is closed")
 
     override val name: String?
         get() = SDL_GetRendererName(check())?.toKString()
@@ -344,7 +354,7 @@ internal class NativeSDLRenderer internal constructor(internal var ptr: CPointer
             return NativeSDLTexture(ptr, this)
         }
         set(value) {
-            val ptr = (value as? NativeSDLTexture)?.ptr
+            val ptr = (value as? NativeSDLTexture)?.raw
             SDL_SetRenderTarget(check(), ptr)
         }
 
@@ -403,7 +413,7 @@ internal class NativeSDLRenderer internal constructor(internal var ptr: CPointer
 
     override fun renderTexture(texture: SDLTexture, src: SDLFRect?, dst: SDLFRect?): Boolean =
         memScoped {
-            val texturePtr = (texture as? NativeSDLTexture)?.ptr
+            val texturePtr = (texture as? NativeSDLTexture)?.raw
                 ?: throw IllegalArgumentException("texture is not a native SDL texture")
             val srcPtr = src?.let {
                 val r = alloc<SDL_FRect>()
@@ -432,7 +442,7 @@ internal class NativeSDLRenderer internal constructor(internal var ptr: CPointer
         center: SDLFloatPoint?,
         flip: Int,
     ): Boolean = memScoped {
-        val texturePtr = (texture as? NativeSDLTexture)?.ptr
+        val texturePtr = (texture as? NativeSDLTexture)?.raw
             ?: throw IllegalArgumentException("texture is not a native SDL texture")
         val srcPtr = src?.let {
             val r = alloc<SDL_FRect>()
@@ -460,8 +470,8 @@ internal class NativeSDLRenderer internal constructor(internal var ptr: CPointer
     }
 
     override fun close() {
-        val renderer = ptr ?: return
-        ptr = null
+        val renderer = raw ?: return
+        raw = null
         SDL_DestroyRenderer(renderer)
     }
 }
@@ -526,6 +536,22 @@ private fun SDL_Event.toSDLEvent(): SDLEvent {
                 direction = wheel.direction.value.toInt(),
             )
         else -> SDLEvent.Unknown(timestamp = type.toULong(), type = type)
+    }
+}
+
+// =========================================================================
+// Raw event (owns the native SDL_Event storage)
+// =========================================================================
+
+internal class NativeSDLEventRaw internal constructor(raw: CPointer<SDL_Event>) : SDLEventRaw {
+
+    private val raw: CPointer<SDL_Event> = raw
+
+    override val ptr: Long
+        get() = raw.rawValue.toLong()
+
+    override fun close() {
+        nativeHeap.free(raw)
     }
 }
 
@@ -627,12 +653,17 @@ internal class NativeSDLDisplay(override val id: Int) : SDLDisplay {
 // =========================================================================
 
 internal class NativeSDLTexture internal constructor(
-    internal var ptr: CPointer<SDL_Texture>?,
+    raw: CPointer<SDL_Texture>?,
     internal val renderer: NativeSDLRenderer,
 ) : SDLTexture {
 
+    internal var raw: CPointer<SDL_Texture>? = raw
+
+    override val ptr: Long
+        get() = raw?.rawValue?.toLong() ?: 0L
+
     private fun check(): CPointer<SDL_Texture> =
-        ptr ?: throw IllegalStateException("SDL texture is closed")
+        raw ?: throw IllegalStateException("SDL texture is closed")
 
     override val format: Int
         get() = throw UnsupportedOperationException("texture format is not queryable")
@@ -719,8 +750,8 @@ internal class NativeSDLTexture internal constructor(
     }
 
     override fun close() {
-        val texture = ptr ?: return
-        ptr = null
+        val texture = raw ?: return
+        raw = null
         SDL_DestroyTexture(texture)
     }
 }
@@ -730,12 +761,17 @@ internal class NativeSDLTexture internal constructor(
 // =========================================================================
 
 internal class NativeSDLSurface internal constructor(
-    internal var ptr: CPointer<SDL_Surface>?,
+    raw: CPointer<SDL_Surface>?,
     internal val owned: Boolean,
 ) : SDLSurface {
 
+    internal var raw: CPointer<SDL_Surface>? = raw
+
+    override val ptr: Long
+        get() = raw?.rawValue?.toLong() ?: 0L
+
     internal fun check(): CPointer<SDL_Surface> =
-        ptr ?: throw IllegalStateException("SDL surface is closed")
+        raw ?: throw IllegalStateException("SDL surface is closed")
 
     override val width: Int
         get() = check().pointed.w
@@ -804,8 +840,8 @@ internal class NativeSDLSurface internal constructor(
     }
 
     override fun close() {
-        val surface = ptr ?: return
-        ptr = null
+        val surface = raw ?: return
+        raw = null
         if (owned) {
             SDL_DestroySurface(surface)
         }
@@ -852,13 +888,13 @@ internal class NativeSDLAudioDevice internal constructor(
     override fun bindStream(stream: SDLAudioStream): Boolean {
         val native = stream as? NativeSDLAudioStream
             ?: throw IllegalArgumentException("stream is not a native SDL audio stream")
-        return SDL_BindAudioStream(deviceId.toUInt(), native.ptr)
+        return SDL_BindAudioStream(deviceId.toUInt(), native.raw)
     }
 
     override fun unbindStream(stream: SDLAudioStream) {
         val native = stream as? NativeSDLAudioStream
             ?: throw IllegalArgumentException("stream is not a native SDL audio stream")
-        SDL_UnbindAudioStream(native.ptr)
+        SDL_UnbindAudioStream(native.raw)
     }
 
     override fun close() {
@@ -867,11 +903,16 @@ internal class NativeSDLAudioDevice internal constructor(
 }
 
 internal class NativeSDLAudioStream internal constructor(
-    internal var ptr: CPointer<cnames.structs.SDL_AudioStream>?,
+    raw: CPointer<cnames.structs.SDL_AudioStream>?,
 ) : SDLAudioStream {
 
+    internal var raw: CPointer<cnames.structs.SDL_AudioStream>? = raw
+
+    override val ptr: Long
+        get() = raw?.rawValue?.toLong() ?: 0L
+
     private fun check(): CPointer<cnames.structs.SDL_AudioStream> =
-        ptr ?: throw IllegalStateException("SDL audio stream is closed")
+        raw ?: throw IllegalStateException("SDL audio stream is closed")
 
     override fun putData(data: ByteArray): Boolean = memScoped {
         val ok = data.usePinned { pinned ->
@@ -899,8 +940,8 @@ internal class NativeSDLAudioStream internal constructor(
     override fun clear(): Boolean = SDL_ClearAudioStream(check())
 
     override fun close() {
-        val stream = ptr ?: return
-        ptr = null
+        val stream = raw ?: return
+        raw = null
         SDL_DestroyAudioStream(stream)
     }
 }
@@ -910,11 +951,16 @@ internal class NativeSDLAudioStream internal constructor(
 // =========================================================================
 
 internal class NativeSDLJoystick internal constructor(
-    internal var ptr: CPointer<cnames.structs.SDL_Joystick>?,
+    raw: CPointer<cnames.structs.SDL_Joystick>?,
 ) : SDLJoystick {
 
+    internal var raw: CPointer<cnames.structs.SDL_Joystick>? = raw
+
+    override val ptr: Long
+        get() = raw?.rawValue?.toLong() ?: 0L
+
     private fun check(): CPointer<cnames.structs.SDL_Joystick> =
-        ptr ?: throw IllegalStateException("SDL joystick is closed")
+        raw ?: throw IllegalStateException("SDL joystick is closed")
 
     override val id: Int
         get() = SDL_GetJoystickID(check()).toInt()
@@ -950,18 +996,23 @@ internal class NativeSDLJoystick internal constructor(
         SDL_RumbleJoystick(check(), lowFrequency.toUShort(), highFrequency.toUShort(), durationMs.toUInt())
 
     override fun close() {
-        val joystick = ptr ?: return
-        ptr = null
+        val joystick = raw ?: return
+        raw = null
         SDL_CloseJoystick(joystick)
     }
 }
 
 internal class NativeSDLGamepad internal constructor(
-    internal var ptr: CPointer<cnames.structs.SDL_Gamepad>?,
+    raw: CPointer<cnames.structs.SDL_Gamepad>?,
 ) : SDLGamepad {
 
+    internal var raw: CPointer<cnames.structs.SDL_Gamepad>? = raw
+
+    override val ptr: Long
+        get() = raw?.rawValue?.toLong() ?: 0L
+
     private fun check(): CPointer<cnames.structs.SDL_Gamepad> =
-        ptr ?: throw IllegalStateException("SDL gamepad is closed")
+        raw ?: throw IllegalStateException("SDL gamepad is closed")
 
     override val id: Int
         get() = SDL_GetGamepadID(check()).toInt()
@@ -991,8 +1042,8 @@ internal class NativeSDLGamepad internal constructor(
         SDL_RumbleGamepad(check(), lowFrequency.toUShort(), highFrequency.toUShort(), durationMs.toUInt())
 
     override fun close() {
-        val gamepad = ptr ?: return
-        ptr = null
+        val gamepad = raw ?: return
+        raw = null
         SDL_CloseGamepad(gamepad)
     }
 }
@@ -1073,6 +1124,26 @@ actual object SDL {
             }
         } finally {
             nativeHeap.free(event)
+        }
+    }
+
+    actual fun pollEventRaw(): SDLEventRaw? {
+        val event = nativeHeap.alloc<SDL_Event>()
+        return if (SDL_PollEvent(event.ptr)) {
+            NativeSDLEventRaw(event.ptr)
+        } else {
+            nativeHeap.free(event)
+            null
+        }
+    }
+
+    actual fun waitEventRaw(): SDLEventRaw? {
+        val event = nativeHeap.alloc<SDL_Event>()
+        return if (SDL_WaitEvent(event.ptr)) {
+            NativeSDLEventRaw(event.ptr)
+        } else {
+            nativeHeap.free(event)
+            null
         }
     }
 

@@ -35,6 +35,9 @@ interface SDLWindow : AutoCloseable {
     /** The SDL window ID, unique across the process. */
     val id: Int
 
+    /** The raw SDL handle address, or 0 after [close]. On native, [cn.enaium.sdl.nativePtr] converts it to the typed pointer. */
+    val ptr: Long
+
     /** The window title. */
     var title: String
 
@@ -111,6 +114,9 @@ interface SDLRenderer : AutoCloseable {
 
     /** The name of the rendering driver in use. */
     val name: String?
+
+    /** The raw SDL handle address, or 0 after [close]. On native, [cn.enaium.sdl.nativePtr] converts it to the typed pointer. */
+    val ptr: Long
 
     /** The current drawing color. */
     var drawColor: SDLColor
@@ -195,6 +201,9 @@ interface SDLTexture : AutoCloseable {
 
     /** The access mode, see [SDLTextureAccess]. */
     val access: Int
+
+    /** The raw SDL handle address, or 0 after [close]. On native, [cn.enaium.sdl.nativePtr] converts it to the typed pointer. */
+    val ptr: Long
 
     /** The texture size in pixels. */
     val size: SDLFloatPoint
@@ -322,6 +331,20 @@ expect object SDL {
 
     /** Blocks until an event is available and returns it. */
     fun waitEvent(): SDLEvent?
+
+    /**
+     * Polls the event queue and returns the raw `SDL_Event`, or `null` if
+     * empty. The returned event owns its storage; call [SDLEventRaw.close]
+     * (or `use`) once you are done reading it.
+     */
+    fun pollEventRaw(): SDLEventRaw?
+
+    /**
+     * Blocks until an event is available and returns the raw `SDL_Event`.
+     * The returned event owns its storage; call [SDLEventRaw.close] (or
+     * `use`) once you are done reading it.
+     */
+    fun waitEventRaw(): SDLEventRaw?
 
     /** Pumps the platform event loop without blocking. */
     fun pumpEvents()

@@ -60,7 +60,7 @@ jobs:
         run: ./gradlew --no-daemon :sdl-kmp:macosArm64Test
 
       - name: Run example (JVM, headless)
-        run: SDL_VIDEO_DRIVER=dummy ./gradlew --no-daemon :example:runJvm
+        run: SDL_VIDEO_DRIVER=dummy ./gradlew --no-daemon :example:jvmRun
 
       - name: Run example (macosArm64, headless)
         run: SDL_VIDEO_DRIVER=dummy ./gradlew --no-daemon :example:runDebugExecutableMacosArm64

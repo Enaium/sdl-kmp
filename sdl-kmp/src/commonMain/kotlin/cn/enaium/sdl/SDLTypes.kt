@@ -293,6 +293,9 @@ interface SDLAudioDevice : AutoCloseable {
 
 /** An audio stream that converts and queues audio data. */
 interface SDLAudioStream : AutoCloseable {
+    /** The raw SDL handle address, or 0 after [close]. On native, [cn.enaium.sdl.nativePtr] converts it to the typed pointer. */
+    val ptr: Long
+
     /** Queues [data] (bytes in the stream's input format) for playback. */
     fun putData(data: ByteArray): Boolean
 
@@ -348,6 +351,10 @@ object SDLMouseButtonMask {
 /** An opened joystick. */
 interface SDLJoystick : AutoCloseable {
     val id: Int
+
+    /** The raw SDL handle address, or 0 after [close]. On native, [cn.enaium.sdl.nativePtr] converts it to the typed pointer. */
+    val ptr: Long
+
     val name: String?
     val type: Int
     val numAxes: Int
@@ -368,6 +375,10 @@ interface SDLJoystick : AutoCloseable {
 /** An opened gamepad. */
 interface SDLGamepad : AutoCloseable {
     val id: Int
+
+    /** The raw SDL handle address, or 0 after [close]. On native, [cn.enaium.sdl.nativePtr] converts it to the typed pointer. */
+    val ptr: Long
+
     val name: String?
     val vendor: Int
     val product: Int

@@ -20,6 +20,8 @@
  * SOFTWARE.
  */
 
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+
 package cn.enaium.sdl
 
 import kotlin.test.Test
@@ -70,6 +72,64 @@ class SDLWindowNativeTest {
                 val event = SDL.pollEvent()
                 if (event is SDLEvent.Unknown) {
                     // no-op; unknown event types must not crash the poll loop
+                }
+                SDL.delay(5)
+            }
+        }
+        SDL.quit()
+    }
+
+    @Test
+    fun rawPointers() {
+        SDL.setMainReady()
+        assertTrue(SDL.setHint("SDL_VIDEO_DRIVER", "dummy"))
+        assertTrue(SDL.init(SDLInitFlags.VIDEO))
+
+        SDL.createWindow("ptr test", 320, 240).use { window ->
+            // The exposed handle is non-zero while the window is open.
+            assertTrue(window.ptr != 0L)
+            assertNotNull(window.nativePtr)
+
+            SDL.createRenderer(window).use { renderer ->
+                assertTrue(renderer.ptr != 0L)
+                assertNotNull(renderer.nativePtr)
+
+                val texture = renderer.createTexture(
+                    format = SDLPixelFormat.RGBA8888,
+                    access = SDLTextureAccess.STREAMING,
+                    width = 16,
+                    height = 16,
+                )
+                assertTrue(texture.ptr != 0L)
+                assertNotNull(texture.nativePtr)
+                texture.close()
+                assertEquals(0L, texture.ptr)
+            }
+
+            // After close the handle reports zero.
+            window.close()
+            assertEquals(0L, window.ptr)
+        }
+
+        SDL.createSurface(4, 4, SDLPixelFormat.RGBA8888).use { surface ->
+            assertTrue(surface.ptr != 0L)
+            assertNotNull(surface.nativePtr)
+        }
+
+        SDL.quit()
+    }
+
+    @Test
+    fun rawEventPoll() {
+        SDL.setMainReady()
+        assertTrue(SDL.setHint("SDL_VIDEO_DRIVER", "dummy"))
+        assertTrue(SDL.init(SDLInitFlags.VIDEO))
+        SDL.createWindow("raw event", 160, 120).use {
+            val deadline = SDL.getTicks() + 200u
+            while (SDL.getTicks() < deadline) {
+                SDL.pollEventRaw()?.use { raw ->
+                    assertTrue(raw.ptr != 0L)
+                    assertNotNull(raw.nativePtr)
                 }
                 SDL.delay(5)
             }
