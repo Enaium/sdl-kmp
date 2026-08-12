@@ -54,9 +54,74 @@ import org.lwjgl.sdl.SDLVersion as LwjglSDLVersion
 import org.lwjgl.sdl.SDLVideo
 import org.lwjgl.sdl.SDLVulkan
 import org.lwjgl.sdl.SDL_Event
+import org.lwjgl.sdl.SDL_EventFilterI
+import org.lwjgl.sdl.SDL_DialogFileCallbackI
+import org.lwjgl.sdl.SDLDialog
 import org.lwjgl.system.JNI
 import org.lwjgl.system.MemoryStack
 import org.lwjgl.system.MemoryUtil
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+
+// =========================================================================
+// JVM callback adapters (event watch / file dialogs)
+// =========================================================================
+
+private const val DIALOG_OPEN_FILE = 1
+private const val DIALOG_SAVE_FILE = 2
+private const val DIALOG_OPEN_FOLDER = 3
+
+private val eventWatchCallbacks = ConcurrentHashMap<Long, (SDLEventRaw) -> Boolean>()
+private val eventWatchNextId = AtomicLong(0)
+private val eventWatchAdapters = ConcurrentHashMap<Long, SDL_EventFilterAdapter>()
+
+private class SDL_EventFilterAdapter(private val id: Long) : SDL_EventFilterI {
+
+    override fun invoke(userdata: Long, event: Long): Boolean {
+        val filter = eventWatchCallbacks[id] ?: return true
+        return try {
+            filter(BorrowedJvmEventRaw(event))
+        } catch (t: Throwable) {
+            true
+        }
+    }
+}
+
+/** An event owned by SDL's queue; closing it does nothing. */
+private class BorrowedJvmEventRaw(private val address: Long) : SDLEventRaw {
+
+    override val ptr: Long
+        get() = address
+
+    override fun close() {
+        // The event is owned by SDL's event queue; nothing to free.
+    }
+}
+
+private val dialogCallbacks = ConcurrentHashMap<Long, (List<String>) -> Unit>()
+private val dialogNextId = AtomicLong(0)
+private val dialogAdapters = ConcurrentHashMap<Long, SDL_DialogFileCallbackAdapter>()
+
+private class SDL_DialogFileCallbackAdapter(private val id: Long) : SDL_DialogFileCallbackI {
+
+    override fun invoke(userdata: Long, filelist: Long, filter: Int) {
+        val callback = dialogCallbacks.remove(id) ?: return
+        val files = if (filelist == 0L) {
+            emptyList()
+        } else {
+            val result = mutableListOf<String>()
+            var i = 0L
+            while (true) {
+                val p = MemoryUtil.memGetAddress(filelist + i * 8)
+                if (p == 0L) break
+                result.add(MemoryUtil.memUTF8(p) ?: "")
+                i++
+            }
+            result
+        }
+        callback(files)
+    }
+}
 
 // =========================================================================
 // JVM (LWJGL SDL3 bindings) implementations
@@ -125,15 +190,13 @@ private fun SDL_Event.toSDLEvent(): SDLEvent {
 // JVM (LWJGL) raw event
 // =========================================================================
 
-internal class JvmSDLEventRaw internal constructor(raw: SDL_Event) : SDLEventRaw {
-
-    private val raw: SDL_Event = raw
+internal class JvmSDLEventRaw internal constructor(val event: SDL_Event) : SDLEventRaw {
 
     override val ptr: Long
-        get() = raw.address()
+        get() = event.address()
 
     override fun close() {
-        raw.free()
+        event.free()
     }
 }
 
@@ -288,6 +351,21 @@ internal class JvmSDLWindow internal constructor(ptr: Long) : SDLWindow {
             ?: throw IllegalArgumentException("icon is not a JVM SDL surface")
         return SDLVideo.SDL_SetWindowIcon(ptr, jvmIcon)
     }
+
+    override var aspectRatio: SDLFloatPoint?
+        get() = MemoryStack.stackPush().use { stack ->
+            val min = stack.mallocFloat(1)
+            val max = stack.mallocFloat(1)
+            if (SDLVideo.SDL_GetWindowAspectRatio(ptr, min, max)) {
+                SDLFloatPoint(min.get(0), max.get(0))
+            } else {
+                null
+            }
+        }
+        set(value) {
+            SDLVideo.SDL_SetWindowAspectRatio(ptr, value?.x ?: 0f, value?.y ?: 0f)
+        }
+
 
     override fun show() {
         SDLVideo.SDL_ShowWindow(ptr)
@@ -545,6 +623,84 @@ internal class JvmSDLRenderer internal constructor(ptr: Long) : SDLRenderer {
             centerP?.free()
         }
     }
+
+    override fun renderTexture9Grid(
+        texture: SDLTexture,
+        src: SDLFRect,
+        leftWidth: Float,
+        rightWidth: Float,
+        topHeight: Float,
+        bottomHeight: Float,
+        scale: Float,
+        dst: SDLFRect,
+    ): Boolean {
+        val t = (texture as? JvmSDLTexture)?.texture
+            ?: throw IllegalArgumentException("texture is not a JVM SDL texture")
+        val srcR = SDL_FRect.calloc().also { r -> r.x(src.x).y(src.y).w(src.width).h(src.height) }
+        val dstR = SDL_FRect.calloc().also { r -> r.x(dst.x).y(dst.y).w(dst.width).h(dst.height) }
+        return try {
+            SDLRender.SDL_RenderTexture9Grid(ptr, t, srcR, leftWidth, rightWidth, topHeight, bottomHeight, scale, dstR)
+        } finally {
+            srcR.free()
+            dstR.free()
+        }
+    }
+
+    override fun renderGeometry(texture: SDLTexture?, vertices: List<SDLVertex>, indices: IntArray?): Boolean {
+        val t = (texture as? JvmSDLTexture)?.texture
+        val vertexBuffer = org.lwjgl.sdl.SDL_Vertex.calloc(vertices.size)
+        return try {
+            for (i in vertices.indices) {
+                val v = vertices[i]
+                vertexBuffer.get(i).set(
+                    org.lwjgl.sdl.SDL_FPoint.calloc().also { p -> p.x(v.position.x).y(v.position.y) },
+                    org.lwjgl.sdl.SDL_FColor.calloc().also { c -> c.r(v.color.r / 255f).g(v.color.g / 255f).b(v.color.b / 255f).a(v.color.a / 255f) },
+                    org.lwjgl.sdl.SDL_FPoint.calloc().also { p -> p.x(v.texCoord.x).y(v.texCoord.y) },
+                )
+            }
+            if (indices == null) {
+                SDLRender.SDL_RenderGeometry(ptr, t, vertexBuffer, null)
+            } else {
+                val idx = MemoryUtil.memAllocInt(indices.size)
+                try {
+                    idx.put(indices).rewind()
+                    SDLRender.SDL_RenderGeometry(ptr, t, vertexBuffer, idx)
+                } finally {
+                    MemoryUtil.memFree(idx)
+                }
+            }
+        } finally {
+            vertexBuffer.free()
+        }
+    }
+
+    override fun renderReadPixels(rect: SDLRect?): SDLSurface? {
+        val r = rect?.let {
+            SDL_Rect.calloc().also { s -> s.x(it.x).y(it.y).w(it.width).h(it.height) }
+        }
+        return try {
+            SDLRender.SDL_RenderReadPixels(ptr, r)?.let { JvmSDLSurface(it, owned = true) }
+        } finally {
+            r?.free()
+        }
+    }
+
+    override fun setLogicalPresentation(width: Int, height: Int, mode: Int): Boolean =
+        SDLRender.SDL_SetRenderLogicalPresentation(ptr, width, height, mode)
+
+    override val logicalPresentationRect: SDLFRect?
+        get() {
+            val r = SDL_FRect.calloc()
+            return try {
+                if (SDLRender.SDL_GetRenderLogicalPresentationRect(ptr, r)) {
+                    SDLFRect(r.x(), r.y(), r.w(), r.h())
+                } else {
+                    null
+                }
+            } finally {
+                r.free()
+            }
+        }
 
     override fun close() {
         if (ptr == 0L) return
@@ -846,6 +1002,204 @@ actual object SDL {
         } finally {
             srcStruct.free()
             dstStruct.free()
+        }
+    }
+
+    actual fun pauseAudioDevice(deviceId: Int) {
+        if (!SDLAudio.SDL_AudioDevicePaused(deviceId)) {
+            SDLAudio.SDL_PauseAudioDevice(deviceId)
+        }
+    }
+
+    actual fun resumeAudioDevice(deviceId: Int) {
+        if (SDLAudio.SDL_AudioDevicePaused(deviceId)) {
+            SDLAudio.SDL_PauseAudioDevice(deviceId)
+        }
+    }
+
+    actual fun isAudioDevicePaused(deviceId: Int): Boolean =
+        SDLAudio.SDL_AudioDevicePaused(deviceId)
+
+    actual fun loadWAV(path: String): SDLAudioData? = MemoryStack.stackPush().use { stack ->
+        val spec = SDL_AudioSpec.calloc()
+        try {
+            val buffer = stack.mallocPointer(1)
+            val length = stack.mallocInt(1)
+            val result = SDLAudio.SDL_LoadWAV(path, spec, buffer, length)
+            if (result == null || buffer.get(0) == 0L) {
+                null
+            } else {
+                val data = MemoryUtil.memByteBuffer(buffer.get(0), length.get(0))
+                val out = ByteArray(length.get(0))
+                data.get(out)
+                SDLAudioData(
+                    spec = SDLAudioSpec(format = spec.format(), channels = spec.channels(), freq = spec.freq()),
+                    data = out,
+                )
+            }
+        } finally {
+            spec.free()
+        }
+    }
+
+    // ==================== input focus ====================
+
+    actual val keyboardFocusWindowId: Int?
+        get() = SDLKeyboard.SDL_GetKeyboardFocus()?.let { SDLVideo.SDL_GetWindowID(it) }
+
+    actual val mouseFocusWindowId: Int?
+        get() = SDLMouse.SDL_GetMouseFocus()?.let { SDLVideo.SDL_GetWindowID(it) }
+
+    // ==================== touch ====================
+
+    actual val touchDevices: List<Int>
+        get() {
+            val devices = org.lwjgl.sdl.SDLTouch.SDL_GetTouchDevices() ?: return emptyList()
+            return (0 until devices.limit()).map { devices.get(it).toInt() }
+        }
+
+    actual fun getTouchDeviceName(touchId: Int): String? =
+        org.lwjgl.sdl.SDLTouch.SDL_GetTouchDeviceName(touchId.toLong())
+
+    actual fun getTouchDeviceType(touchId: Int): Int =
+        org.lwjgl.sdl.SDLTouch.SDL_GetTouchDeviceType(touchId.toLong())
+
+    actual fun getTouchFingers(touchId: Int): List<SDLTouchFinger> {
+        val fingers = org.lwjgl.sdl.SDLTouch.SDL_GetTouchFingers(touchId.toLong()) ?: return emptyList()
+        val result = mutableListOf<SDLTouchFinger>()
+        for (i in 0 until fingers.limit()) {
+            val f = org.lwjgl.sdl.SDL_Finger.create(fingers.get(i)) ?: continue
+            result.add(
+                SDLTouchFinger(
+                    id = f.id().toULong(),
+                    x = f.x(),
+                    y = f.y(),
+                    pressure = f.pressure(),
+                    down = true,
+                ),
+            )
+        }
+        return result
+    }
+
+    // ==================== event watch / filter ====================
+
+    actual fun addEventWatch(filter: (SDLEventRaw) -> Boolean): Boolean {
+        val id = eventWatchNextId.getAndIncrement()
+        eventWatchCallbacks[id] = filter
+        val cb = SDL_EventFilterAdapter(id)
+        eventWatchAdapters[id] = cb
+        return if (org.lwjgl.sdl.SDLEvents.SDL_AddEventWatch(cb, 0L)) {
+            true
+        } else {
+            eventWatchCallbacks.remove(id)
+            eventWatchAdapters.remove(id)
+            false
+        }
+    }
+
+    actual fun removeEventWatch(filter: (SDLEventRaw) -> Boolean) {
+        // LWJGL 3.4.x has no SDL_DelEventWatch; stop dispatching to the
+        // callback instead (the native adapter stays registered but idle).
+        val id = eventWatchCallbacks.entries.firstOrNull { it.value === filter }?.key ?: return
+        eventWatchCallbacks.remove(id)
+    }
+
+    actual fun setEventEnabled(type: Int, enabled: Boolean) {
+        org.lwjgl.sdl.SDLEvents.SDL_SetEventEnabled(type, enabled)
+    }
+
+    actual fun eventEnabled(type: Int): Boolean =
+        org.lwjgl.sdl.SDLEvents.SDL_EventEnabled(type)
+
+    actual fun flushEvents(minType: Int, maxType: Int) {
+        org.lwjgl.sdl.SDLEvents.SDL_FlushEvents(minType, maxType)
+    }
+
+    actual fun pushEvent(event: SDLEventRaw): Boolean {
+        val raw = event as? JvmSDLEventRaw
+            ?: throw IllegalArgumentException("event is not a JVM SDL event")
+        return org.lwjgl.sdl.SDLEvents.SDL_PushEvent(raw.event)
+    }
+
+    // ==================== file dialogs ====================
+
+    actual fun showOpenFileDialog(
+        windowId: Int?,
+        filters: List<SDLDialogFileFilter>,
+        defaultLocation: String?,
+        allowMultiple: Boolean,
+        callback: (List<String>) -> Unit,
+    ) = showJvmFileDialog(
+        dialogType = DIALOG_OPEN_FILE,
+        windowId = windowId,
+        filters = filters,
+        defaultLocation = defaultLocation,
+        allowMultiple = allowMultiple,
+        callback = callback,
+    )
+
+    actual fun showSaveFileDialog(
+        windowId: Int?,
+        filters: List<SDLDialogFileFilter>,
+        defaultLocation: String?,
+        callback: (List<String>) -> Unit,
+    ) = showJvmFileDialog(
+        dialogType = DIALOG_SAVE_FILE,
+        windowId = windowId,
+        filters = filters,
+        defaultLocation = defaultLocation,
+        allowMultiple = false,
+        callback = callback,
+    )
+
+    actual fun showFolderDialog(
+        windowId: Int?,
+        defaultLocation: String?,
+        allowMultiple: Boolean,
+        callback: (List<String>) -> Unit,
+    ) = showJvmFileDialog(
+        dialogType = DIALOG_OPEN_FOLDER,
+        windowId = windowId,
+        filters = emptyList(),
+        defaultLocation = defaultLocation,
+        allowMultiple = allowMultiple,
+        callback = callback,
+    )
+
+    private fun showJvmFileDialog(
+        dialogType: Int,
+        windowId: Int?,
+        filters: List<SDLDialogFileFilter>,
+        defaultLocation: String?,
+        allowMultiple: Boolean,
+        callback: (List<String>) -> Unit,
+    ) {
+        val id = dialogNextId.getAndIncrement()
+        dialogCallbacks[id] = callback
+        val cb = SDL_DialogFileCallbackAdapter(id)
+        dialogAdapters[id] = cb
+        MemoryStack.stackPush().use { stack ->
+            val window = windowId?.let { SDLVideo.SDL_GetWindowFromID(it) } ?: 0L
+            val filterBuffer = if (filters.isEmpty()) {
+                null
+            } else {
+                org.lwjgl.sdl.SDL_DialogFileFilter.calloc(filters.size, stack).also { buffer ->
+                    for (i in filters.indices) {
+                        buffer.get(i).name(stack.UTF8(filters[i].name)).pattern(stack.UTF8(filters[i].pattern))
+                    }
+                }
+            }
+            try {
+                when (dialogType) {
+                    DIALOG_OPEN_FILE -> SDLDialog.SDL_ShowOpenFileDialog(cb, 0L, window, filterBuffer, defaultLocation, allowMultiple)
+                    DIALOG_SAVE_FILE -> SDLDialog.SDL_ShowSaveFileDialog(cb, 0L, window, filterBuffer, defaultLocation)
+                    else -> SDLDialog.SDL_ShowOpenFolderDialog(cb, 0L, window, defaultLocation, allowMultiple)
+                }
+            } catch (e: Throwable) {
+                dialogCallbacks.remove(id)
+                throw e
+            }
         }
     }
 
@@ -1296,6 +1650,7 @@ internal class JvmSDLSurface internal constructor(
     override val width: Int get() = check().w()
     override val height: Int get() = check().h()
     override val format: Int get() = check().format()
+    override val colorspace: Int get() = LwjglSDLSurface.SDL_GetSurfaceColorspace(check())
     override val pitch: Int get() = check().pitch()
 
     override val pixels: ByteArray
@@ -1331,6 +1686,26 @@ internal class JvmSDLSurface internal constructor(
         }
     }
 
+    override fun fillRects(rects: List<SDLRect>, color: SDLColor): Boolean {
+        if (rects.isEmpty()) return true
+        val r = SDL_Rect.calloc(rects.size)
+        return try {
+            for (i in rects.indices) {
+                r.get(i).x(rects[i].x).y(rects[i].y).w(rects[i].width).h(rects[i].height)
+            }
+            LwjglSDLSurface.SDL_FillSurfaceRects(check(), r, SDLPixels.SDL_MapRGBA(
+                SDLPixels.SDL_GetPixelFormatDetails(check().format()) ?: return false,
+                null,
+                color.r.toByte(),
+                color.g.toByte(),
+                color.b.toByte(),
+                color.a.toByte(),
+            ))
+        } finally {
+            r.free()
+        }
+    }
+
     override fun blit(src: SDLRect?, dst: SDLSurface, dstRect: SDLRect?): Boolean {
         val jvmDst = (dst as? JvmSDLSurface)?.check()
             ?: throw IllegalArgumentException("dst is not a JVM SDL surface")
@@ -1342,6 +1717,23 @@ internal class JvmSDLSurface internal constructor(
         }
         return try {
             LwjglSDLSurface.SDL_BlitSurface(check(), srcR, jvmDst, dstR)
+        } finally {
+            srcR?.free()
+            dstR?.free()
+        }
+    }
+
+    override fun blitScaled(src: SDLRect?, dst: SDLSurface, dstRect: SDLRect?, scaleMode: Int): Boolean {
+        val jvmDst = (dst as? JvmSDLSurface)?.check()
+            ?: throw IllegalArgumentException("dst is not a JVM SDL surface")
+        val srcR = src?.let {
+            SDL_Rect.calloc().also { s -> s.x(it.x).y(it.y).w(it.width).h(it.height) }
+        }
+        val dstR = dstRect?.let {
+            SDL_Rect.calloc().also { s -> s.x(it.x).y(it.y).w(it.width).h(it.height) }
+        }
+        return try {
+            LwjglSDLSurface.SDL_BlitSurfaceScaled(check(), srcR, jvmDst, dstR, scaleMode)
         } finally {
             srcR?.free()
             dstR?.free()
@@ -1403,6 +1795,19 @@ internal class JvmSDLAudioDevice internal constructor(
         SDLAudio.SDL_UnbindAudioStream(native.ptr)
     }
 
+    override fun pause() {
+        // LWJGL 3.4.x exposes only the toggle form; sync with the paused state.
+        if (!SDLAudio.SDL_AudioDevicePaused(deviceId)) {
+            SDLAudio.SDL_PauseAudioDevice(deviceId)
+        }
+    }
+
+    override fun resume() {
+        if (SDLAudio.SDL_AudioDevicePaused(deviceId)) {
+            SDLAudio.SDL_PauseAudioDevice(deviceId)
+        }
+    }
+
     override fun close() {
         SDLAudio.SDL_CloseAudioDevice(deviceId)
     }
@@ -1444,6 +1849,81 @@ internal class JvmSDLAudioStream internal constructor(
     override val queued: Int
         get() = SDLAudio.SDL_GetAudioStreamQueued(ptr)
 
+    override val inputSpec: SDLAudioSpec?
+        get() {
+            val src = SDL_AudioSpec.calloc()
+            val dst = SDL_AudioSpec.calloc()
+            return try {
+                if (SDLAudio.SDL_GetAudioStreamFormat(ptr, src, dst)) {
+                    SDLAudioSpec(format = src.format(), channels = src.channels(), freq = src.freq())
+                } else {
+                    null
+                }
+            } finally {
+                src.free()
+                dst.free()
+            }
+        }
+
+    override val outputSpec: SDLAudioSpec?
+        get() {
+            val src = SDL_AudioSpec.calloc()
+            val dst = SDL_AudioSpec.calloc()
+            return try {
+                if (SDLAudio.SDL_GetAudioStreamFormat(ptr, src, dst)) {
+                    SDLAudioSpec(format = dst.format(), channels = dst.channels(), freq = dst.freq())
+                } else {
+                    null
+                }
+            } finally {
+                src.free()
+                dst.free()
+            }
+        }
+
+    override fun setFormat(src: SDLAudioSpec, dst: SDLAudioSpec): Boolean {
+        val srcStruct = SDL_AudioSpec.calloc()
+        val dstStruct = SDL_AudioSpec.calloc()
+        return try {
+            srcStruct.format(src.format).channels(src.channels).freq(src.freq)
+            dstStruct.format(dst.format).channels(dst.channels).freq(dst.freq)
+            SDLAudio.SDL_SetAudioStreamFormat(ptr, srcStruct, dstStruct)
+        } finally {
+            srcStruct.free()
+            dstStruct.free()
+        }
+    }
+
+    override var gain: Float
+        get() = SDLAudio.SDL_GetAudioStreamGain(ptr)
+        set(value) {
+            SDLAudio.SDL_SetAudioStreamGain(ptr, value)
+        }
+
+    override var frequencyRatio: Float
+        get() = SDLAudio.SDL_GetAudioStreamFrequencyRatio(ptr)
+        set(value) {
+            SDLAudio.SDL_SetAudioStreamFrequencyRatio(ptr, value)
+        }
+
+    override var devicePaused: Boolean
+        get() = SDLAudio.SDL_AudioStreamDevicePaused(ptr)
+        set(value) {
+            if (value) {
+                SDLAudio.SDL_PauseAudioStreamDevice(ptr)
+            } else {
+                SDLAudio.SDL_ResumeAudioStreamDevice(ptr)
+            }
+        }
+
+    override fun resume() {
+        devicePaused = false
+    }
+
+    override fun pause() {
+        devicePaused = true
+    }
+
     override fun flush(): Boolean = SDLAudio.SDL_FlushAudioStream(ptr)
 
     override fun clear(): Boolean = SDLAudio.SDL_ClearAudioStream(ptr)
@@ -1472,6 +1952,8 @@ internal class JvmSDLJoystick internal constructor(
     override val numBalls: Int get() = LwjglSDLJoystick.SDL_GetNumJoystickBalls(ptr)
     override val numHats: Int get() = LwjglSDLJoystick.SDL_GetNumJoystickHats(ptr)
     override val numButtons: Int get() = LwjglSDLJoystick.SDL_GetNumJoystickButtons(ptr)
+    override val playerIndex: Int get() = LwjglSDLJoystick.SDL_GetJoystickPlayerIndex(ptr)
+    override val firmwareVersion: Int get() = LwjglSDLJoystick.SDL_GetJoystickFirmwareVersion(ptr).toInt()
 
     override fun axis(axis: Int): Short = LwjglSDLJoystick.SDL_GetJoystickAxis(ptr, axis)
 
@@ -1513,6 +1995,34 @@ internal class JvmSDLGamepad internal constructor(
     override val product: Int get() = LwjglSDLGamepad.SDL_GetGamepadProduct(ptr).toInt()
     override val serial: String? get() = LwjglSDLGamepad.SDL_GetGamepadSerial(ptr)
     override val connected: Boolean get() = LwjglSDLGamepad.SDL_GamepadConnected(ptr)
+    override val playerIndex: Int get() = LwjglSDLGamepad.SDL_GetGamepadPlayerIndex(ptr)
+    override val firmwareVersion: Int get() = LwjglSDLGamepad.SDL_GetGamepadFirmwareVersion(ptr).toInt()
+    override val touchpadCount: Int get() = LwjglSDLGamepad.SDL_GetNumGamepadTouchpads(ptr)
+
+    override fun touchpadFinger(touchpad: Int, finger: Int): SDLTouchpadFinger? = MemoryStack.stackPush().use { stack ->
+        val down = stack.malloc(1)
+        val x = stack.mallocFloat(1)
+        val y = stack.mallocFloat(1)
+        val pressure = stack.mallocFloat(1)
+        if (LwjglSDLGamepad.SDL_GetGamepadTouchpadFinger(ptr, touchpad, finger, down, x, y, pressure)) {
+            SDLTouchpadFinger(touchpad, finger, down.get(0) != 0.toByte(), x.get(0), y.get(0), pressure.get(0))
+        } else {
+            null
+        }
+    }
+
+    override fun hasSensor(type: Int): Boolean = LwjglSDLGamepad.SDL_GamepadHasSensor(ptr, type)
+
+    override fun sensorData(type: Int): FloatArray? = MemoryStack.stackPush().use { stack ->
+        val data = stack.mallocFloat(3)
+        if (LwjglSDLGamepad.SDL_GetGamepadSensorData(ptr, type, data)) {
+            FloatArray(3) { data.get(it) }
+        } else {
+            null
+        }
+    }
+
+    override fun getSensorDataRate(type: Int): Float = LwjglSDLGamepad.SDL_GetGamepadSensorDataRate(ptr, type)
 
     override fun button(button: Int): Boolean = LwjglSDLGamepad.SDL_GetGamepadButton(ptr, button)
 

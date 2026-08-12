@@ -52,8 +52,8 @@ object SDLEventType {
     const val DROP_COMPLETE = 0x1003
     const val DROP_POSITION = 0x1004
     const val CLIPBOARD_UPDATE = 0x1500
-    const val SENSOR_FIRST = 0x2000
-    const val SENSOR_UPDATE = 0x2000
+    const val SENSOR_FIRST = 0x1200
+    const val SENSOR_UPDATE = 0x1200
     const val JOYSTICK_FIRST = 0x600
     const val JOYSTICK_AXIS_MOTION = 0x600
     const val JOYSTICK_BALL_MOTION = 0x601
@@ -77,11 +77,11 @@ object SDLEventType {
     const val AUDIO_DEVICE_ADDED = 0x1100
     const val AUDIO_DEVICE_REMOVED = 0x1101
     const val AUDIO_DEVICE_FORMAT_CHANGED = 0x1102
-    const val CAMERA_DEVICE_FIRST = 0x1200
-    const val CAMERA_DEVICE_ADDED = 0x1200
-    const val CAMERA_DEVICE_REMOVED = 0x1201
-    const val CAMERA_DEVICE_APPROVED = 0x1202
-    const val CAMERA_DEVICE_DENIED = 0x1203
+    const val CAMERA_DEVICE_FIRST = 0x1400
+    const val CAMERA_DEVICE_ADDED = 0x1400
+    const val CAMERA_DEVICE_REMOVED = 0x1401
+    const val CAMERA_DEVICE_APPROVED = 0x1402
+    const val CAMERA_DEVICE_DENIED = 0x1403
     const val RENDER_DEVICE_RESET = 0x2000
     const val RENDER_TARGETS_RESET = 0x2001
     const val TOUCH_FIRST = 0x700
@@ -240,6 +240,48 @@ sealed class SDLEvent {
         val deviceId: Int,
         val button: Int,
         val down: Boolean,
+    ) : SDLEvent()
+
+    /** A gamepad touchpad finger changed. */
+    data class GamepadTouchpad(
+        override val timestamp: ULong,
+        val deviceId: Int,
+        val touchpad: Int,
+        val finger: Int,
+        val down: Boolean,
+        val x: Float,
+        val y: Float,
+        val pressure: Float,
+    ) : SDLEvent()
+
+    /** A gamepad sensor reading. */
+    data class GamepadSensor(
+        override val timestamp: ULong,
+        val deviceId: Int,
+        val sensor: Int,
+        val data: FloatArray,
+    ) : SDLEvent()
+
+    /** A joystick/gamepad battery level changed. */
+    data class JoyBattery(
+        override val timestamp: ULong,
+        val deviceId: Int,
+        val state: Int,
+        val percent: Int,
+    ) : SDLEvent()
+
+    /** A sensor reading (device sensors, see [SDLSensorType]). */
+    data class SensorUpdate(
+        override val timestamp: ULong,
+        val sensorId: ULong,
+        val data: FloatArray,
+    ) : SDLEvent()
+
+    /** A camera device was added or removed. */
+    data class CameraDevice(
+        override val timestamp: ULong,
+        val deviceId: Int,
+        val type: Int,
     ) : SDLEvent()
 
     /** A touch finger event. */

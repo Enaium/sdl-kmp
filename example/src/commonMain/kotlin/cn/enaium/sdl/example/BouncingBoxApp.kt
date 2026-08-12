@@ -23,22 +23,39 @@
 package cn.enaium.sdl.example
 
 import cn.enaium.sdl.SDL
+import cn.enaium.sdl.SDLAudioData
+import cn.enaium.sdl.SDLAudioDeviceID
+import cn.enaium.sdl.SDLAudioFormat
+import cn.enaium.sdl.SDLAudioSpec
+import cn.enaium.sdl.SDLBlendMode
 import cn.enaium.sdl.SDLColor
 import cn.enaium.sdl.SDLFloatPoint
 import cn.enaium.sdl.SDLFRect
+import cn.enaium.sdl.SDLInitFlags
+import cn.enaium.sdl.SDLKeycode
 import cn.enaium.sdl.SDLPixelFormat
 import cn.enaium.sdl.SDLPoint
 import cn.enaium.sdl.SDLRect
+import cn.enaium.sdl.SDLScaleMode
 import cn.enaium.sdl.SDLTextureAccess
+import cn.enaium.sdl.SDLVertex
 import cn.enaium.sdl.SDLEvent
-import cn.enaium.sdl.SDLInitFlags
-import cn.enaium.sdl.SDLKeycode
 import cn.enaium.sdl.SDLWindowEventType
 import cn.enaium.sdl.SDLWindowFlags
 
 /**
- * A small "bouncing box" demo shared by every platform: window, renderer,
- * event loop, timer and input handling all live in commonMain.
+ * A small demo shared by every platform: window, renderer, event loop, timer,
+ * input, audio playback and a wide swath of the renderer/audio APIs all live
+ * in commonMain.
+ *
+ * Controls:
+ *  - ESC / close button: quit
+ *  - SPACE: pause / resume audio
+ *  - UP / DOWN: stream gain (0..2)
+ *  - LEFT / RIGHT: playback speed (0.5x..2x)
+ *  - S: save a screenshot (screenshot.bmp) and toggle clip rect
+ *  - R: reset clip rect / viewport / scale
+ *  - L: toggle logical presentation (800x600 letterbox)
  *
  * Platform entry points only provide `main()` (see jvmMain/nativeMain).
  */
@@ -50,9 +67,9 @@ fun runExample() {
     // (cocoa/x11) should work. If the initial attempt fails and the
     // dummy driver succeeds we assume headless — otherwise report the error.
     var headless = false
-    if (!SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)) {
+    if (!SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS or SDLInitFlags.AUDIO)) {
         SDL.setHint("SDL_VIDEO_DRIVER", "dummy")
-        if (SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS)) {
+        if (SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS or SDLInitFlags.AUDIO)) {
             println("video init fell back to the dummy driver — running headless")
             headless = true
         } else {
@@ -69,6 +86,10 @@ fun runExample() {
     headless = headless || SDL.getCurrentVideoDriver() == "dummy"
     val maxFrames = if (headless) 300 else Int.MAX_VALUE
 
+    // ---------- audio: enumerate devices ----------
+    val playbackDevices = SDL.audioPlaybackDevices
+    println("Audio playback devices: ${playbackDevices.map { it to SDL.getAudioDeviceName(it) }}")
+
     SDL.createWindow(
         title = "sdl-kmp example",
         width = 800,
@@ -84,10 +105,66 @@ fun runExample() {
                 width = 64,
                 height = 64,
             )
+
+            // A second texture from a software surface (createSurface + blit).
+            val surface = SDL.createSurface(160, 120, SDLPixelFormat.RGBA8888)
+            surface.fillRects(
+                listOf(
+                    SDLRect(0, 0, 160, 60),
+                    SDLRect(0, 120 - 30, 160, 30),
+                ),
+                SDLColor(40, 60, 120),
+            )
+            surface.fillRect(SDLRect(60, 30, 40, 60), SDLColor(220, 180, 60))
+            val surfaceTexture = renderer.createTextureFromSurface(surface)
+            println("Surface: ${surface.width}x${surface.height} fmt=0x${surface.format.toString(16)} colorspace=${surface.colorspace}")
+
+            // ---------- audio: open a device stream; the bouncing box plays a
+            // short "blip" whenever it bounces off an edge ----------
+            val bounceSpec = SDLAudioSpec(
+                format = SDLAudioFormat.F32LE,
+                channels = 2,
+                freq = 48000,
+            )
+            val bounceStream = try {
+                SDL.openAudioDeviceStream(
+                    deviceId = SDLAudioDeviceID.DEFAULT_PLAYBACK,
+                    spec = bounceSpec,
+                ).also { it ->
+                    it.gain = 0.5f
+                    // SDL_OpenAudioDeviceStream opens the device in a PAUSED
+                    // state; without this no audio is heard (all platforms).
+                    it.devicePaused = false
+                    SDL.resumeAudioDevice(SDLAudioDeviceID.DEFAULT_PLAYBACK)
+                    println(
+                        "Audio stream: input=$it.inputSpec output=$it.outputSpec " +
+                            "gain=${it.gain} streamPaused=${it.devicePaused} " +
+                            "devicePaused=${SDL.isAudioDevicePaused(SDLAudioDeviceID.DEFAULT_PLAYBACK)}",
+                    )
+                }
+            } catch (e: Throwable) {
+                println("audio unavailable: ${e.message}")
+                null
+            }
+
+            // A short blip (~90ms, exponential decay) played on each bounce.
+            val blip = generateBounceBlip(freq = 880f, sampleRate = 48000, durationMs = 90, volume = 0.6f)
+
             var angle = 0.0
             var running = true
             var frames = 0
+            var paused = false
+            var clipEnabled = false
+            var logicalEnabled = false
+            // Mouse-following square position (window coordinates).
+            var mouseX = window.size.x / 2f
+            var mouseY = window.size.y / 2f
             val start = SDL.getTicks()
+
+            fun logFps() {
+                val elapsedMs = (SDL.getTicks() - start).toFloat() / 1000f
+                println("fps: ${(frames / elapsedMs).toInt()}")
+            }
 
             while (running) {
                 // ---- events ----
@@ -99,28 +176,101 @@ fun runExample() {
                             if (event.type == SDLWindowEventType.CLOSE_REQUESTED) {
                                 running = false
                             }
-                        is SDLEvent.Key ->
-                            if (event.down && event.keycode == SDLKeycode.ESCAPE) {
-                                running = false
+                        is SDLEvent.Key -> when {
+                            !event.down -> Unit
+                            event.keycode == SDLKeycode.ESCAPE -> running = false
+                            event.keycode == SDLKeycode.SPACE -> {
+                                paused = !paused
+                                if (bounceStream != null) {
+                                    if (paused) {
+                                        SDL.pauseAudioDevice(SDLAudioDeviceID.DEFAULT_PLAYBACK)
+                                    } else {
+                                        SDL.resumeAudioDevice(SDLAudioDeviceID.DEFAULT_PLAYBACK)
+                                    }
+                                    println("audio ${if (paused) "paused" else "resumed"}")
+                                }
                             }
+                            event.keycode == SDLKeycode.UP -> bounceStream?.let { it.gain = (it.gain + 0.1f).coerceAtMost(2f); println("gain=${it.gain}") }
+                            event.keycode == SDLKeycode.DOWN -> bounceStream?.let { it.gain = (it.gain - 0.1f).coerceAtLeast(0f); println("gain=${it.gain}") }
+                            event.keycode == SDLKeycode.RIGHT -> bounceStream?.let { it.frequencyRatio = (it.frequencyRatio + 0.1f).coerceAtMost(2f); println("ratio=${it.frequencyRatio}") }
+                            event.keycode == SDLKeycode.LEFT -> bounceStream?.let { it.frequencyRatio = (it.frequencyRatio - 0.1f).coerceAtLeast(0.5f); println("ratio=${it.frequencyRatio}") }
+                            event.keycode == SDLKeycode.s -> {
+                                val shot = renderer.renderReadPixels(null)
+                                if (shot != null) {
+                                    val ok = shot.saveBMP("screenshot.bmp")
+                                    println("screenshot saved: $ok")
+                                    shot.close()
+                                } else {
+                                    println("screenshot failed: ${SDL.error()}")
+                                }
+                                clipEnabled = !clipEnabled
+                            }
+                            event.keycode == SDLKeycode.l -> {
+                                logicalEnabled = !logicalEnabled
+                                if (logicalEnabled) {
+                                    renderer.setLogicalPresentation(800, 600, 2) // LETTERBOX
+                                } else {
+                                    renderer.setLogicalPresentation(0, 0, 0) // DISABLED
+                                }
+                                println("logical presentation ${if (logicalEnabled) "enabled (800x600 letterbox)" else "disabled"}")
+                            }
+                            event.keycode == SDLKeycode.r -> {
+                                renderer.viewport = null
+                                renderer.clipRect = null
+                                renderer.scale = SDLFloatPoint(1f, 1f)
+                                clipEnabled = false
+                                println("view/clip/scale reset")
+                            }
+                        }
+                        is SDLEvent.AudioDevice -> println(
+                            "audio device event: id=${event.deviceId} capture=${event.isCapture} type=0x${event.type.toString(16)}",
+                        )
                         is SDLEvent.MouseButton -> println(
                             "mouse ${if (event.down) "down" else "up"} at ${event.x.toInt()},${event.y.toInt()}",
                         )
+                        is SDLEvent.MouseMotion -> {
+                            // Track the cursor for the mouse-following square.
+                            mouseX = event.x
+                            mouseY = event.y
+                        }
                         else -> Unit
                     }
                 }
 
                 // ---- update ----
-                box.update()
-                angle = (angle + 1.0) % 360.0
+                if (box.update() && bounceStream != null && !paused) {
+                    // Bounced: queue a short blip. Clear any stale queued data
+                    // first so fast bounces restart the sound cleanly.
+                    bounceStream.clear()
+                    bounceStream.putData(blip)
+                }
                 angle = (angle + 1.0) % 360.0
 
                 // ---- render ----
                 renderer.drawColor = SDLColor(18, 18, 24)
                 renderer.clear()
 
+                // clip rect / viewport / scale demo
+                if (clipEnabled) {
+                    renderer.clipRect = SDLRect(40, 40, window.size.x - 80, window.size.y - 80)
+                } else {
+                    renderer.clipRect = null
+                }
+
                 renderer.drawColor = SDLColor(255, 0, 128)
                 renderer.fillRect(box.rect)
+
+                // ---- square that follows the mouse ----
+                val mouseRect = SDLRect(
+                    (mouseX - 15).toInt(),
+                    (mouseY - 15).toInt(),
+                    30,
+                    30,
+                )
+                renderer.drawColor = SDLColor(80, 255, 120)
+                renderer.fillRect(mouseRect)
+                renderer.drawColor = SDLColor(240, 240, 240)
+                renderer.drawRect(mouseRect)
 
                 // ---- textured spinning square ----
                 texture.update(null, gradientPixels(64, 64), 64 * 4)
@@ -131,6 +281,46 @@ fun runExample() {
                     center = SDLFloatPoint(100f, 100f),
                 )
 
+                // ---- 9-grid (sliced) texture ----
+                renderer.renderTexture9Grid(
+                    texture = texture,
+                    src = SDLFRect(8f, 8f, 48f, 48f),
+                    leftWidth = 16f,
+                    rightWidth = 16f,
+                    topHeight = 16f,
+                    bottomHeight = 16f,
+                    scale = 1f,
+                    dst = SDLFRect(560f, 20f, 200f, 120f),
+                )
+
+                // ---- surface-backed texture (blit demo) ----
+                renderer.blendMode = SDLBlendMode.BLEND
+                renderer.renderTexture(
+                    texture = surfaceTexture,
+                    dst = SDLFRect(20f, 460f, 160f, 120f),
+                )
+                renderer.blendMode = SDLBlendMode.NONE
+
+                // ---- renderGeometry: a gradient triangle ----
+                renderer.renderGeometry(
+                    texture = texture,
+                    vertices = listOf(
+                        SDLVertex(SDLFloatPoint(120f, 420f), SDLColor(255, 0, 0)),
+                        SDLVertex(SDLFloatPoint(220f, 420f), SDLColor(0, 255, 0)),
+                        SDLVertex(SDLFloatPoint(170f, 360f), SDLColor(0, 0, 255)),
+                    ),
+                )
+
+                // ---- viewport + scale demo (HUD corner) ----
+                renderer.viewport = SDLRect(window.size.x - 140, 20, 120, 90)
+                renderer.scale = SDLFloatPoint(0.5f, 0.5f)
+                renderer.drawColor = SDLColor(255, 255, 255)
+                renderer.fillRect(SDLRect(0, 0, 200, 140))
+                renderer.drawColor = SDLColor(0, 0, 0)
+                renderer.drawRect(SDLRect(0, 0, 199, 139))
+                renderer.viewport = null
+                renderer.scale = SDLFloatPoint(1f, 1f)
+
                 renderer.drawColor = SDLColor(0, 200, 255)
                 renderer.drawLine(0, 0, window.size.x, window.size.y)
                 renderer.drawLine(window.size.x, 0, 0, window.size.y)
@@ -138,12 +328,20 @@ fun runExample() {
                 renderer.drawColor = SDLColor(128, 128, 128)
                 renderer.drawRect(SDLRect(0, 0, window.size.x - 1, window.size.y - 1))
 
+                // ---- logical presentation (L key toggles; default off so
+                // fullscreen devices like phones keep their native resolution) ----
+                if (logicalEnabled && frames % 120 == 0) {
+                    val logicalRect = renderer.logicalPresentationRect
+                    if (logicalRect != null) {
+                        println("logical presentation rect: $logicalRect")
+                    }
+                }
+
                 renderer.present()
 
                 frames++
                 if (frames % 120 == 0) {
-                    val elapsedMs = (SDL.getTicks() - start).toFloat() / 1000f
-                    println("fps: ${(frames / elapsedMs).toInt()}")
+                    logFps()
                 }
 
                 // ---- frame pacing (~60 FPS) ----
@@ -156,6 +354,9 @@ fun runExample() {
 
             println("ran $frames frames")
             texture.close()
+            surfaceTexture.close()
+            surface.close()
+            bounceStream?.close()
         }
     }
 
@@ -180,6 +381,28 @@ fun gradientPixels(width: Int, height: Int): ByteArray {
     return pixels
 }
 
+/**
+ * Generates a short decaying "blip" in stereo F32LE for bounce effects.
+ */
+fun generateBounceBlip(freq: Float, sampleRate: Int, durationMs: Int, volume: Float): ByteArray {
+    val samples = sampleRate * durationMs / 1000
+    val out = ByteArray(samples * 2 * 4) // 2 channels * 4 bytes (F32)
+    for (i in 0 until samples) {
+        val t = i.toFloat() / sampleRate
+        val decay = kotlin.math.exp(-6f * i / samples) // exponential decay
+        val v = kotlin.math.sin(2.0 * kotlin.math.PI * freq * t).toFloat() * volume * decay
+        val bits = v.toBits()
+        for (c in 0 until 2) {
+            val o = (i * 2 + c) * 4
+            out[o] = (bits ushr 0).toByte()
+            out[o + 1] = (bits ushr 8).toByte()
+            out[o + 2] = (bits ushr 16).toByte()
+            out[o + 3] = (bits ushr 24).toByte()
+        }
+    }
+    return out
+}
+
 /** A box that bounces off the window edges. */
 class BouncingBox(private val bounds: () -> SDLPoint) {
 
@@ -192,23 +415,30 @@ class BouncingBox(private val bounds: () -> SDLPoint) {
     val rect: SDLRect
         get() = SDLRect(x, y, size, size)
 
-    fun update() {
+    /** Returns `true` when the box bounced off an edge this update. */
+    fun update(): Boolean {
         val (w, h) = bounds()
+        var bounced = false
         x += vx
         y += vy
         if (x < 0) {
             x = 0
             vx = -vx
+            bounced = true
         } else if (x + size > w) {
             x = w - size
             vx = -vx
+            bounced = true
         }
         if (y < 0) {
             y = 0
             vy = -vy
+            bounced = true
         } else if (y + size > h) {
             y = h - size
             vy = -vy
+            bounced = true
         }
+        return bounced
     }
 }

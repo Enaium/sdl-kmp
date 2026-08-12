@@ -86,6 +86,9 @@ interface SDLWindow : AutoCloseable {
     /** The window maximum size (null when not set). */
     var maximumSize: SDLPoint?
 
+    /** The window aspect ratio range (min, max), or null when not set. */
+    var aspectRatio: SDLFloatPoint?
+
     fun show()
     fun hide()
     fun raise()
@@ -188,6 +191,34 @@ interface SDLRenderer : AutoCloseable {
         center: SDLFloatPoint? = null,
         flip: Int = SDLFlipMode.NONE,
     ): Boolean
+
+    /** Draws a 9-grid (sliced) portion of [texture]. */
+    fun renderTexture9Grid(
+        texture: SDLTexture,
+        src: SDLFRect,
+        leftWidth: Float,
+        rightWidth: Float,
+        topHeight: Float,
+        bottomHeight: Float,
+        scale: Float,
+        dst: SDLFRect,
+    ): Boolean
+
+    /** Draws [vertices] with optional [indices]; [texture] may be null. */
+    fun renderGeometry(
+        texture: SDLTexture?,
+        vertices: List<SDLVertex>,
+        indices: IntArray? = null,
+    ): Boolean
+
+    /** Reads the current render target into a new surface (null on failure). */
+    fun renderReadPixels(rect: SDLRect?): SDLSurface?
+
+    /** Sets the logical presentation size and mode (see [SDLLogicalPresentation]). */
+    fun setLogicalPresentation(width: Int, height: Int, mode: Int): Boolean
+
+    /** The logical presentation rect in renderer coordinates, or null when disabled. */
+    val logicalPresentationRect: SDLFRect?
 
     /** Releases the underlying SDL renderer. */
     override fun close()
@@ -472,6 +503,90 @@ expect object SDL {
 
     /** Creates a stream converting [srcSpec] into [dstSpec]. */
     fun createAudioStream(srcSpec: SDLAudioSpec, dstSpec: SDLAudioSpec): SDLAudioStream
+
+    /** Pauses playback on the device with [deviceId]. */
+    fun pauseAudioDevice(deviceId: Int)
+
+    /** Resumes playback on the device with [deviceId]. */
+    fun resumeAudioDevice(deviceId: Int)
+
+    /** Whether the device with [deviceId] is currently paused. */
+    fun isAudioDevicePaused(deviceId: Int): Boolean
+
+    /** Loads a WAV file, or null on failure. */
+    fun loadWAV(path: String): SDLAudioData?
+
+    // ==================== input focus ====================
+
+    /** The window that has keyboard focus, or null. */
+    val keyboardFocusWindowId: Int?
+
+    /** The window that has mouse focus, or null. */
+    val mouseFocusWindowId: Int?
+
+    // ==================== touch ====================
+
+    /** IDs of all touch devices. */
+    val touchDevices: List<Int>
+
+    /** The name of the touch device with [touchId], or null. */
+    fun getTouchDeviceName(touchId: Int): String?
+
+    /** The type of the touch device with [touchId] (see [SDLTouchDeviceType]). */
+    fun getTouchDeviceType(touchId: Int): Int
+
+    /** All active fingers of the touch device with [touchId]. */
+    fun getTouchFingers(touchId: Int): List<SDLTouchFinger>
+
+    // ==================== event filter / watch ====================
+
+    /**
+     * Registers [filter] as an event watch; it is called for every event
+     * pushed onto the queue. Returning `false` drops the event.
+     */
+    fun addEventWatch(filter: (SDLEventRaw) -> Boolean): Boolean
+
+    /** Removes a previously registered [filter] event watch. */
+    fun removeEventWatch(filter: (SDLEventRaw) -> Boolean)
+
+    /** Enables or disables events of [type]. */
+    fun setEventEnabled(type: Int, enabled: Boolean)
+
+    /** Whether events of [type] are enabled. */
+    fun eventEnabled(type: Int): Boolean
+
+    /** Removes all events in the range [minType]..[maxType] from the queue. */
+    fun flushEvents(minType: Int, maxType: Int)
+
+    /** Pushes [event] onto the queue; returns `false` on failure. */
+    fun pushEvent(event: SDLEventRaw): Boolean
+
+    // ==================== file dialogs ====================
+
+    /** Shows an open-file dialog; [callback] receives the chosen paths (empty on cancel). */
+    fun showOpenFileDialog(
+        windowId: Int?,
+        filters: List<SDLDialogFileFilter>,
+        defaultLocation: String?,
+        allowMultiple: Boolean,
+        callback: (List<String>) -> Unit,
+    )
+
+    /** Shows a save-file dialog; [callback] receives the chosen path or an empty list on cancel. */
+    fun showSaveFileDialog(
+        windowId: Int?,
+        filters: List<SDLDialogFileFilter>,
+        defaultLocation: String?,
+        callback: (List<String>) -> Unit,
+    )
+
+    /** Shows a folder-picker dialog; [callback] receives the chosen path or an empty list on cancel. */
+    fun showFolderDialog(
+        windowId: Int?,
+        defaultLocation: String?,
+        allowMultiple: Boolean,
+        callback: (List<String>) -> Unit,
+    )
 
     // ==================== keyboard ====================
 

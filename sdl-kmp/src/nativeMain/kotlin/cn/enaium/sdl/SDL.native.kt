@@ -200,6 +200,24 @@ internal class NativeSDLWindow internal constructor(raw: CPointer<SDL_Window>?) 
         return SDL_SetWindowIcon(check(), iconPtr)
     }
 
+    override var aspectRatio: SDLFloatPoint?
+        get() = memScoped {
+            val min = alloc<FloatVar>()
+            val max = alloc<FloatVar>()
+            if (SDL_GetWindowAspectRatio(check(), min.ptr, max.ptr)) {
+                SDLFloatPoint(min.value, max.value)
+            } else {
+                null
+            }
+        }
+        set(value) {
+            if (value == null) {
+                SDL_SetWindowAspectRatio(check(), 0f, 0f)
+            } else {
+                SDL_SetWindowAspectRatio(check(), value.x, value.y)
+            }
+        }
+
     override fun show() {
         SDL_ShowWindow(check())
     }
@@ -465,6 +483,80 @@ internal class NativeSDLRenderer internal constructor(raw: CPointer<SDL_Renderer
         SDL_RenderTextureRotated(check(), texturePtr, srcPtr, dstPtr, angle, centerPtr, flip.toUInt())
     }
 
+    override fun renderTexture9Grid(
+        texture: SDLTexture,
+        src: SDLFRect,
+        leftWidth: Float,
+        rightWidth: Float,
+        topHeight: Float,
+        bottomHeight: Float,
+        scale: Float,
+        dst: SDLFRect,
+    ): Boolean = memScoped {
+        val texturePtr = (texture as? NativeSDLTexture)?.raw
+            ?: throw IllegalArgumentException("texture is not a native SDL texture")
+        val srcPtr = alloc<SDL_FRect>()
+        srcPtr.x = src.x
+        srcPtr.y = src.y
+        srcPtr.w = src.width
+        srcPtr.h = src.height
+        val dstPtr = alloc<SDL_FRect>()
+        dstPtr.x = dst.x
+        dstPtr.y = dst.y
+        dstPtr.w = dst.width
+        dstPtr.h = dst.height
+        SDL_RenderTexture9Grid(check(), texturePtr, srcPtr.ptr, leftWidth, rightWidth, topHeight, bottomHeight, scale, dstPtr.ptr)
+    }
+
+    override fun renderGeometry(texture: SDLTexture?, vertices: List<SDLVertex>, indices: IntArray?): Boolean = memScoped {
+        val texturePtr = (texture as? NativeSDLTexture)?.raw
+        val vertexArr = allocArray<SDL_Vertex>(vertices.size)
+        for (i in vertices.indices) {
+            vertexArr[i].position.x = vertices[i].position.x
+            vertexArr[i].position.y = vertices[i].position.y
+            vertexArr[i].color.r = vertices[i].color.r / 255f
+            vertexArr[i].color.g = vertices[i].color.g / 255f
+            vertexArr[i].color.b = vertices[i].color.b / 255f
+            vertexArr[i].color.a = vertices[i].color.a / 255f
+            vertexArr[i].tex_coord.x = vertices[i].texCoord.x
+            vertexArr[i].tex_coord.y = vertices[i].texCoord.y
+        }
+        val indexPtr = indices?.let {
+            val arr = allocArray<IntVar>(it.size)
+            for (i in it.indices) arr[i] = it[i]
+            arr
+        }
+        SDL_RenderGeometry(check(), texturePtr, vertexArr, vertices.size, indexPtr, indices?.size ?: 0)
+    }
+
+    override fun renderReadPixels(rect: SDLRect?): SDLSurface? {
+        val surface = memScoped {
+            val r = rect?.let {
+                val sr = alloc<SDL_Rect>()
+                sr.x = it.x
+                sr.y = it.y
+                sr.w = it.width
+                sr.h = it.height
+                sr.ptr
+            }
+            SDL_RenderReadPixels(check(), r)
+        } ?: return null
+        return NativeSDLSurface(surface, owned = true)
+    }
+
+    override fun setLogicalPresentation(width: Int, height: Int, mode: Int): Boolean =
+        SDL_SetRenderLogicalPresentation(check(), width, height, rendererLogicalPresentationOf(mode))
+
+    override val logicalPresentationRect: SDLFRect?
+        get() = memScoped {
+            val r = alloc<SDL_FRect>()
+            if (SDL_GetRenderLogicalPresentationRect(check(), r.ptr)) {
+                SDLFRect(r.x, r.y, r.w, r.h)
+            } else {
+                null
+            }
+        }
+
     override fun close() {
         val renderer = raw ?: return
         raw = null
@@ -531,6 +623,51 @@ private fun SDL_Event.toSDLEvent(): SDLEvent {
                 y = wheel.y,
                 direction = wheel.direction.value.toInt(),
             )
+        SDLEventType.AUDIO_DEVICE_ADDED, SDLEventType.AUDIO_DEVICE_REMOVED, SDLEventType.AUDIO_DEVICE_FORMAT_CHANGED ->
+            SDLEvent.AudioDevice(
+                timestamp = adevice.timestamp,
+                deviceId = adevice.which.toInt(),
+                isCapture = adevice.recording,
+                type = type,
+            )
+        SDLEventType.JOYSTICK_BATTERY_UPDATED ->
+            SDLEvent.JoyBattery(
+                timestamp = jbattery.timestamp,
+                deviceId = jbattery.which.toInt(),
+                state = jbattery.state,
+                percent = jbattery.percent,
+            )
+        SDLEventType.GAMEPAD_TOUCHPAD_DOWN, SDLEventType.GAMEPAD_TOUCHPAD_MOTION, SDLEventType.GAMEPAD_TOUCHPAD_UP ->
+            SDLEvent.GamepadTouchpad(
+                timestamp = gtouchpad.timestamp,
+                deviceId = gtouchpad.which.toInt(),
+                touchpad = gtouchpad.touchpad,
+                finger = gtouchpad.finger,
+                down = type == SDLEventType.GAMEPAD_TOUCHPAD_DOWN,
+                x = gtouchpad.x,
+                y = gtouchpad.y,
+                pressure = gtouchpad.pressure,
+            )
+        SDLEventType.GAMEPAD_SENSOR_UPDATE ->
+            SDLEvent.GamepadSensor(
+                timestamp = gsensor.timestamp,
+                deviceId = gsensor.which.toInt(),
+                sensor = gsensor.sensor,
+                data = floatArrayOf(gsensor.data[0], gsensor.data[1], gsensor.data[2]),
+            )
+        SDLEventType.SENSOR_UPDATE ->
+            SDLEvent.SensorUpdate(
+                timestamp = sensor.timestamp,
+                sensorId = sensor.which.toULong(),
+                data = (0 until 6).map { sensor.data[it] }.toFloatArray(),
+            )
+        SDLEventType.CAMERA_DEVICE_ADDED, SDLEventType.CAMERA_DEVICE_REMOVED,
+        SDLEventType.CAMERA_DEVICE_APPROVED, SDLEventType.CAMERA_DEVICE_DENIED ->
+            SDLEvent.CameraDevice(
+                timestamp = cdevice.timestamp,
+                deviceId = cdevice.which.toInt(),
+                type = type,
+            )
         else -> SDLEvent.Unknown(timestamp = type.toULong(), type = type)
     }
 }
@@ -590,6 +727,25 @@ private fun glAttrOf(value: Int): SDL_GLAttr = enumValueOf(
     SDL_GLAttr.entries,
     value,
 ) { SDL_GLAttr.SDL_GL_RED_SIZE }
+
+private fun rendererLogicalPresentationOf(value: Int): SDL_RendererLogicalPresentation = when (value) {
+    SDLLogicalPresentation.STRETCH -> SDL_RendererLogicalPresentation.SDL_LOGICAL_PRESENTATION_STRETCH
+    SDLLogicalPresentation.LETTERBOX -> SDL_RendererLogicalPresentation.SDL_LOGICAL_PRESENTATION_LETTERBOX
+    SDLLogicalPresentation.OVERSCAN -> SDL_RendererLogicalPresentation.SDL_LOGICAL_PRESENTATION_OVERSCAN
+    SDLLogicalPresentation.INTEGER_SCALE -> SDL_RendererLogicalPresentation.SDL_LOGICAL_PRESENTATION_INTEGER_SCALE
+    else -> SDL_RendererLogicalPresentation.SDL_LOGICAL_PRESENTATION_DISABLED
+}
+
+private fun sensorTypeOf(value: Int): Int = when (value) {
+    SDLSensorType.GYRO -> SDL_SENSOR_GYRO
+    SDLSensorType.ACCEL_L -> SDL_SENSOR_ACCEL_L
+    SDLSensorType.GYRO_L -> SDL_SENSOR_GYRO_L
+    SDLSensorType.ACCEL_R -> SDL_SENSOR_ACCEL_R
+    SDLSensorType.GYRO_R -> SDL_SENSOR_GYRO_R
+    SDLSensorType.UNKNOWN -> SDL_SENSOR_UNKNOWN
+    SDLSensorType.INVALID -> SDL_SENSOR_INVALID
+    else -> SDL_SENSOR_ACCEL
+}
 
 // =========================================================================
 // Native (cinterop) display
@@ -778,6 +934,9 @@ internal class NativeSDLSurface internal constructor(
     override val format: Int
         get() = check().pointed.format.toInt()
 
+    override val colorspace: Int
+        get() = SDL_GetSurfaceColorspace(check()).toInt()
+
     override val pitch: Int
         get() = check().pointed.pitch
 
@@ -807,6 +966,18 @@ internal class NativeSDLSurface internal constructor(
         SDL_FillSurfaceRect(check(), rectPtr, color.toUInt())
     }
 
+    override fun fillRects(rects: List<SDLRect>, color: SDLColor): Boolean = memScoped {
+        if (rects.isEmpty()) return true
+        val arr = allocArray<SDL_Rect>(rects.size)
+        for (i in rects.indices) {
+            arr[i].x = rects[i].x
+            arr[i].y = rects[i].y
+            arr[i].w = rects[i].width
+            arr[i].h = rects[i].height
+        }
+        SDL_FillSurfaceRects(check(), arr, rects.size, color.toUInt())
+    }
+
     override fun blit(src: SDLRect?, dst: SDLSurface, dstRect: SDLRect?): Boolean = memScoped {
         val srcPtr = src?.let {
             val r = alloc<SDL_Rect>()
@@ -825,6 +996,31 @@ internal class NativeSDLSurface internal constructor(
             r.ptr
         }
         SDL_BlitSurface(check(), srcPtr, (dst as? NativeSDLSurface)?.check(), dstPtr)
+    }
+
+    override fun blitScaled(src: SDLRect?, dst: SDLSurface, dstRect: SDLRect?, scaleMode: Int): Boolean = memScoped {
+        val srcPtr = src?.let {
+            val r = alloc<SDL_Rect>()
+            r.x = it.x
+            r.y = it.y
+            r.w = it.width
+            r.h = it.height
+            r.ptr
+        }
+        val dstPtr = dstRect?.let {
+            val r = alloc<SDL_Rect>()
+            r.x = it.x
+            r.y = it.y
+            r.w = it.width
+            r.h = it.height
+            r.ptr
+        }
+        val mode = if (scaleMode == SDLScaleMode.LINEAR) {
+            SDL_SCALEMODE_LINEAR
+        } else {
+            SDL_SCALEMODE_NEAREST
+        }
+        SDL_BlitSurfaceScaled(check(), srcPtr, (dst as? NativeSDLSurface)?.check(), dstPtr, mode)
     }
 
     override fun saveBMP(path: String): Boolean = SDL_SaveBMP(check(), path)
@@ -893,6 +1089,18 @@ internal class NativeSDLAudioDevice internal constructor(
         SDL_UnbindAudioStream(native.raw)
     }
 
+    override fun pause() {
+        if (!SDL_AudioDevicePaused(deviceId.toUInt())) {
+            SDL_PauseAudioDevice(deviceId.toUInt())
+        }
+    }
+
+    override fun resume() {
+        if (SDL_AudioDevicePaused(deviceId.toUInt())) {
+            SDL_PauseAudioDevice(deviceId.toUInt())
+        }
+    }
+
     override fun close() {
         SDL_CloseAudioDevice(deviceId.toUInt())
     }
@@ -930,6 +1138,70 @@ internal class NativeSDLAudioStream internal constructor(
 
     override val queued: Int
         get() = SDL_GetAudioStreamQueued(check())
+
+    override val inputSpec: SDLAudioSpec?
+        get() = memScoped {
+            val src = alloc<SDL_AudioSpec>()
+            val dst = alloc<SDL_AudioSpec>()
+            if (SDL_GetAudioStreamFormat(check(), src.ptr, dst.ptr)) {
+                SDLAudioSpec(format = src.format.toInt(), channels = src.channels, freq = src.freq)
+            } else {
+                null
+            }
+        }
+
+    override val outputSpec: SDLAudioSpec?
+        get() = memScoped {
+            val src = alloc<SDL_AudioSpec>()
+            val dst = alloc<SDL_AudioSpec>()
+            if (SDL_GetAudioStreamFormat(check(), src.ptr, dst.ptr)) {
+                SDLAudioSpec(format = dst.format.toInt(), channels = dst.channels, freq = dst.freq)
+            } else {
+                null
+            }
+        }
+
+    override fun setFormat(src: SDLAudioSpec, dst: SDLAudioSpec): Boolean = memScoped {
+        val srcSpec = alloc<SDL_AudioSpec>()
+        srcSpec.format = src.format.toUInt()
+        srcSpec.channels = src.channels
+        srcSpec.freq = src.freq
+        val dstSpec = alloc<SDL_AudioSpec>()
+        dstSpec.format = dst.format.toUInt()
+        dstSpec.channels = dst.channels
+        dstSpec.freq = dst.freq
+        SDL_SetAudioStreamFormat(check(), srcSpec.ptr, dstSpec.ptr)
+    }
+
+    override var gain: Float
+        get() = SDL_GetAudioStreamGain(check())
+        set(value) {
+            SDL_SetAudioStreamGain(check(), value)
+        }
+
+    override var frequencyRatio: Float
+        get() = SDL_GetAudioStreamFrequencyRatio(check())
+        set(value) {
+            SDL_SetAudioStreamFrequencyRatio(check(), value)
+        }
+
+    override var devicePaused: Boolean
+        get() = SDL_AudioStreamDevicePaused(check())
+        set(value) {
+            if (value) {
+                SDL_PauseAudioStreamDevice(check())
+            } else {
+                SDL_ResumeAudioStreamDevice(check())
+            }
+        }
+
+    override fun resume() {
+        devicePaused = false
+    }
+
+    override fun pause() {
+        devicePaused = true
+    }
 
     override fun flush(): Boolean = SDL_FlushAudioStream(check())
 
@@ -971,6 +1243,8 @@ internal class NativeSDLJoystick internal constructor(
     override val numBalls: Int get() = SDL_GetNumJoystickBalls(check())
     override val numHats: Int get() = SDL_GetNumJoystickHats(check())
     override val numButtons: Int get() = SDL_GetNumJoystickButtons(check())
+    override val playerIndex: Int get() = SDL_GetJoystickPlayerIndex(check())
+    override val firmwareVersion: Int get() = SDL_GetJoystickFirmwareVersion(check()).toInt()
 
     override fun axis(axis: Int): Short = SDL_GetJoystickAxis(check(), axis)
 
@@ -1028,6 +1302,48 @@ internal class NativeSDLGamepad internal constructor(
     override val connected: Boolean
         get() = SDL_GamepadConnected(check())
 
+    override val playerIndex: Int
+        get() = SDL_GetGamepadPlayerIndex(check())
+
+    override val firmwareVersion: Int
+        get() = SDL_GetGamepadFirmwareVersion(check()).toInt()
+
+    override val touchpadCount: Int
+        get() = SDL_GetNumGamepadTouchpads(check())
+
+    override fun touchpadFinger(touchpad: Int, finger: Int): SDLTouchpadFinger? = memScoped {
+        val down = alloc<BooleanVar>()
+        val x = alloc<FloatVar>()
+        val y = alloc<FloatVar>()
+        val pressure = alloc<FloatVar>()
+        if (SDL_GetGamepadTouchpadFinger(check(), touchpad, finger, down.ptr, x.ptr, y.ptr, pressure.ptr)) {
+            SDLTouchpadFinger(touchpad, finger, down.value, x.value, y.value, pressure.value)
+        } else {
+            null
+        }
+    }
+
+    override fun hasSensor(type: Int): Boolean =
+        SDL_GamepadHasSensor(check(), sensorTypeOf(type))
+
+    override fun sensorData(type: Int): FloatArray? {
+        val values = when (type) {
+            SDLSensorType.GYRO, SDLSensorType.GYRO_L, SDLSensorType.GYRO_R -> 3
+            else -> 3
+        }
+        return memScoped {
+            val data = allocArray<FloatVar>(values)
+            if (SDL_GetGamepadSensorData(check(), sensorTypeOf(type), data, values)) {
+                (0 until values).map { data[it] }.toFloatArray()
+            } else {
+                null
+            }
+        }
+    }
+
+    override fun getSensorDataRate(type: Int): Float =
+        SDL_GetGamepadSensorDataRate(check(), sensorTypeOf(type))
+
     override fun button(button: Int): Boolean =
         SDL_GetGamepadButton(check(), button)
 
@@ -1042,6 +1358,59 @@ internal class NativeSDLGamepad internal constructor(
         raw = null
         SDL_CloseGamepad(gamepad)
     }
+}
+
+// =========================================================================
+// Event watch / dialog callbacks
+// =========================================================================
+
+private val eventWatchCallbacks = kotlin.collections.mutableMapOf<Long, (SDLEventRaw) -> Boolean>()
+private val eventWatchHolders = kotlin.collections.mutableMapOf<Long, CPointer<LongVar>>()
+private val eventWatchNextId = kotlin.concurrent.AtomicLong(0)
+
+private class NativeBorrowedEventRaw internal constructor(raw: CPointer<SDL_Event>) : SDLEventRaw {
+
+    private val raw: CPointer<SDL_Event> = raw
+
+    override val ptr: Long
+        get() = raw.rawValue.toLong()
+
+    override fun close() {
+        // The event is owned by SDL's event queue; nothing to free.
+    }
+}
+
+private fun nativeEventWatch(userdata: COpaquePointer?, event: CPointer<SDL_Event>?): Boolean {
+    val id = userdata?.reinterpret<LongVar>()?.pointed?.value ?: return true
+    val filter = eventWatchCallbacks[id] ?: return true
+    val rawEvent = event ?: return true
+    return try {
+        filter(NativeBorrowedEventRaw(rawEvent))
+    } catch (t: Throwable) {
+        true
+    }
+}
+
+private val dialogCallbacks = kotlin.collections.mutableMapOf<Long, (List<String>) -> Unit>()
+private val dialogHolders = kotlin.collections.mutableMapOf<Long, CPointer<LongVar>>()
+private val dialogNextId = kotlin.concurrent.AtomicLong(0)
+
+private fun nativeDialogCallback(userdata: COpaquePointer?, filelist: CPointer<CPointerVar<ByteVar>>?, filter: Int) {
+    val id = userdata?.reinterpret<LongVar>()?.pointed?.value ?: return
+    val callback = dialogCallbacks.remove(id) ?: return
+    val files = if (filelist == null) {
+        emptyList()
+    } else {
+        val result = mutableListOf<String>()
+        var i = 0
+        while (true) {
+            val p = filelist[i] ?: break
+            result.add(p.toKString())
+            i++
+        }
+        result
+    }
+    callback(files)
 }
 
 // =========================================================================
@@ -1380,6 +1749,173 @@ actual object SDL {
         } finally {
             nativeHeap.free(srcPtr)
             nativeHeap.free(dstPtr)
+        }
+    }
+
+    actual fun pauseAudioDevice(deviceId: Int) {
+        if (!SDL_AudioDevicePaused(deviceId.toUInt())) {
+            SDL_PauseAudioDevice(deviceId.toUInt())
+        }
+    }
+
+    actual fun resumeAudioDevice(deviceId: Int) {
+        if (SDL_AudioDevicePaused(deviceId.toUInt())) {
+            SDL_PauseAudioDevice(deviceId.toUInt())
+        }
+    }
+
+    actual fun isAudioDevicePaused(deviceId: Int): Boolean =
+        SDL_AudioDevicePaused(deviceId.toUInt())
+
+    actual fun loadWAV(path: String): SDLAudioData? = memScoped {
+        val spec = alloc<SDL_AudioSpec>()
+        val buffer = alloc<CPointerVar<UByteVar>>()
+        val length = alloc<UIntVar>()
+        val ok = SDL_LoadWAV(path, spec.ptr, buffer.ptr, length.ptr)
+        val buf = buffer.value
+        if (!ok || buf == null) {
+            null
+        } else {
+            try {
+                SDLAudioData(
+                    spec = SDLAudioSpec(format = spec.format.toInt(), channels = spec.channels, freq = spec.freq),
+                    data = buf.readBytes(length.value.toInt()),
+                )
+            } finally {
+                SDL_free(buf)
+            }
+        }
+    }
+
+    // ==================== input focus ====================
+
+    actual val keyboardFocusWindowId: Int?
+        get() = SDL_GetKeyboardFocus()?.let { SDL_GetWindowID(it).toInt() }
+
+    actual val mouseFocusWindowId: Int?
+        get() = SDL_GetMouseFocus()?.let { SDL_GetWindowID(it).toInt() }
+
+    // ==================== touch ====================
+
+    actual val touchDevices: List<Int>
+        get() = memScoped {
+            val count = alloc<IntVar>()
+            val ids = SDL_GetTouchDevices(count.ptr) ?: return emptyList()
+            try {
+                (0 until count.value).map { ids[it].toLong().toInt() }
+            } finally {
+                SDL_free(ids)
+            }
+        }
+
+    actual fun getTouchDeviceName(touchId: Int): String? =
+        SDL_GetTouchDeviceName(touchId.toLong().toULong())?.toKString()
+
+    actual fun getTouchDeviceType(touchId: Int): Int =
+        SDL_GetTouchDeviceType(touchId.toLong().toULong()).toInt()
+
+    actual fun getTouchFingers(touchId: Int): List<SDLTouchFinger> = memScoped {
+        val count = alloc<IntVar>()
+        val fingers = SDL_GetTouchFingers(touchId.toLong().toULong(), count.ptr) ?: return emptyList()
+        (0 until count.value).mapNotNull { i ->
+            val f = fingers[i] ?: return@mapNotNull null
+            SDLTouchFinger(
+                id = f.pointed.id.toULong(),
+                x = f.pointed.x,
+                y = f.pointed.y,
+                pressure = f.pointed.pressure,
+                down = true,
+            )
+        }
+    }
+
+    // ==================== event watch / filter ====================
+
+    actual fun addEventWatch(filter: (SDLEventRaw) -> Boolean): Boolean {
+        val id = eventWatchNextId.getAndIncrement()
+        eventWatchCallbacks[id] = filter
+        val holder = nativeHeap.alloc<LongVar>().also { it.value = id }
+        eventWatchHolders[id] = holder.ptr
+        SDL_AddEventWatch(staticCFunction(::nativeEventWatch), holder.ptr)
+        return true
+    }
+
+    actual fun removeEventWatch(filter: (SDLEventRaw) -> Boolean) {
+        val id = eventWatchCallbacks.entries.firstOrNull { it.value === filter }?.key
+        if (id == null) return
+        eventWatchCallbacks.remove(id)
+        val holder = eventWatchHolders.remove(id) ?: return
+        SDL_RemoveEventWatch(staticCFunction(::nativeEventWatch), holder)
+        nativeHeap.free(holder)
+    }
+
+    actual fun setEventEnabled(type: Int, enabled: Boolean) {
+        SDL_SetEventEnabled(type.toUInt(), enabled)
+    }
+
+    actual fun eventEnabled(type: Int): Boolean = SDL_EventEnabled(type.toUInt())
+
+    actual fun flushEvents(minType: Int, maxType: Int) {
+        SDL_FlushEvents(minType.toUInt(), maxType.toUInt())
+    }
+
+    actual fun pushEvent(event: SDLEventRaw): Boolean {
+        val raw = event as? NativeSDLEventRaw
+            ?: throw IllegalArgumentException("event is not a native SDL event")
+        return SDL_PushEvent(raw.nativePtr ?: return false)
+    }
+
+    // ==================== file dialogs ====================
+
+    actual fun showOpenFileDialog(
+        windowId: Int?,
+        filters: List<SDLDialogFileFilter>,
+        defaultLocation: String?,
+        allowMultiple: Boolean,
+        callback: (List<String>) -> Unit,
+    ) = showFileDialog(0, windowId, filters, defaultLocation, allowMultiple, callback)
+
+    actual fun showSaveFileDialog(
+        windowId: Int?,
+        filters: List<SDLDialogFileFilter>,
+        defaultLocation: String?,
+        callback: (List<String>) -> Unit,
+    ) = showFileDialog(1, windowId, filters, defaultLocation, false, callback)
+
+    actual fun showFolderDialog(
+        windowId: Int?,
+        defaultLocation: String?,
+        allowMultiple: Boolean,
+        callback: (List<String>) -> Unit,
+    ) = showFileDialog(2, windowId, emptyList(), defaultLocation, allowMultiple, callback)
+
+    private fun showFileDialog(
+        type: Int,
+        windowId: Int?,
+        filters: List<SDLDialogFileFilter>,
+        defaultLocation: String?,
+        allowMultiple: Boolean,
+        callback: (List<String>) -> Unit,
+    ) {
+        val id = dialogNextId.getAndIncrement()
+        dialogCallbacks[id] = callback
+        val holder = nativeHeap.alloc<LongVar>().also { it.value = id }
+        dialogHolders[id] = holder.ptr
+        val window = windowId?.let { SDL_GetWindowFromID(it.toUInt()) }
+        memScoped {
+            val filterArr = allocArray<SDL_DialogFileFilter>(filters.size)
+            for (i in filters.indices) {
+                filterArr[i].name = filters[i].name.cstr.ptr
+                filterArr[i].pattern = filters[i].pattern.cstr.ptr
+            }
+            when (type) {
+                0 ->
+                    SDL_ShowOpenFileDialog(staticCFunction(::nativeDialogCallback), holder.ptr, window, filterArr, filters.size, defaultLocation, allowMultiple)
+                1 ->
+                    SDL_ShowSaveFileDialog(staticCFunction(::nativeDialogCallback), holder.ptr, window, filterArr, filters.size, defaultLocation)
+                else ->
+                    SDL_ShowOpenFolderDialog(staticCFunction(::nativeDialogCallback), holder.ptr, window, defaultLocation, allowMultiple)
+            }
         }
     }
 

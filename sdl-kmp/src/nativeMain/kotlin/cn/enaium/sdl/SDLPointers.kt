@@ -25,9 +25,28 @@
 package cn.enaium.sdl
 
 import cnames.structs.SDL_AudioStream
+import cnames.structs.SDL_Camera
+import cnames.structs.SDL_Condition
 import cnames.structs.SDL_Gamepad
+import cnames.structs.SDL_GPUCommandBuffer
+import cnames.structs.SDL_GPUBuffer
+import cnames.structs.SDL_GPUDevice
+import cnames.structs.SDL_GPUFence
+import cnames.structs.SDL_GPUGraphicsPipeline
+import cnames.structs.SDL_GPURenderPass
+import cnames.structs.SDL_GPUSampler
+import cnames.structs.SDL_GPUShader
+import cnames.structs.SDL_GPUTexture
+import cnames.structs.SDL_Haptic
+import cnames.structs.SDL_IOStream
 import cnames.structs.SDL_Joystick
+import cnames.structs.SDL_Mutex
+import cnames.structs.SDL_Process
+import cnames.structs.SDL_RWLock
 import cnames.structs.SDL_Renderer
+import cnames.structs.SDL_Semaphore
+import cnames.structs.SDL_Sensor
+import cnames.structs.SDL_Thread
 import cnames.structs.SDL_Window
 import kotlinx.cinterop.CPointed
 import kotlinx.cinterop.CPointer
@@ -69,4 +88,80 @@ val SDLGamepad.nativePtr: CPointer<SDL_Gamepad>?
 
 /** The typed cinterop `SDL_Event` pointer of this raw event, or null once closed. */
 val SDLEventRaw.nativePtr: CPointer<SDL_Event>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_Thread` pointer of this thread, or null once closed. */
+val SDLThread.nativePtr: CPointer<SDL_Thread>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_Mutex` pointer of this mutex, or null once closed. */
+val SDLMutex.nativePtr: CPointer<SDL_Mutex>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_RWLock` pointer of this lock, or null once closed. */
+val SDLRWLock.nativePtr: CPointer<SDL_RWLock>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_Semaphore` pointer of this semaphore, or null once closed. */
+val SDLSemaphore.nativePtr: CPointer<SDL_Semaphore>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_Condition` pointer of this condition, or null once closed. */
+val SDLCondition.nativePtr: CPointer<SDL_Condition>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_IOStream` pointer of this stream, or null once closed. */
+val SDLIOStream.nativePtr: CPointer<SDL_IOStream>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_Process` pointer of this process, or null once closed. */
+val SDLProcess.nativePtr: CPointer<SDL_Process>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_Camera` pointer of this camera, or null once closed. */
+val SDLCamera.nativePtr: CPointer<SDL_Camera>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_Sensor` pointer of this sensor, or null once closed. */
+val SDLSensor.nativePtr: CPointer<SDL_Sensor>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_Haptic` pointer of this haptic device, or null once closed. */
+val SDLHaptic.nativePtr: CPointer<SDL_Haptic>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_GPUDevice` pointer of this device, or null once closed. */
+val SDLGPUDevice.nativePtr: CPointer<SDL_GPUDevice>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_GPUTexture` pointer of this texture, or null once closed. */
+val SDLGPUTexture.nativePtr: CPointer<SDL_GPUTexture>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_GPUBuffer` pointer of this buffer, or null once closed. */
+val SDLGPUBuffer.nativePtr: CPointer<SDL_GPUBuffer>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_GPUShader` pointer of this shader, or null once closed. */
+val SDLGPUShader.nativePtr: CPointer<SDL_GPUShader>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_GPUGraphicsPipeline` pointer of this pipeline, or null once closed. */
+val SDLGPUGraphicsPipeline.nativePtr: CPointer<SDL_GPUGraphicsPipeline>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_GPUSampler` pointer of this sampler, or null once closed. */
+val SDLGPUSampler.nativePtr: CPointer<SDL_GPUSampler>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_GPUCommandBuffer` pointer of this command buffer, or null once closed. */
+val SDLGPUCommandBuffer.nativePtr: CPointer<SDL_GPUCommandBuffer>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_GPURenderPass` pointer of this render pass, or null once closed. */
+val SDLGPURenderPass.nativePtr: CPointer<SDL_GPURenderPass>?
+    get() = ptr.typedPointer()
+
+/** The typed cinterop `SDL_GPUFence` pointer of this fence, or null once closed. */
+val SDLGPUFence.nativePtr: CPointer<SDL_GPUFence>?
     get() = ptr.typedPointer()

@@ -50,3 +50,32 @@ void SDL_kmp_VulkanDestroySurface(void *instance, uint64_t surface);
 bool SDL_kmp_VulkanGetPresentationSupport(void *instance, void *physicalDevice, uint32_t queueFamilyIndex);
 
 #endif /* CINTEROP_HELPERS_H */
+
+/*
+ * Wrapper around SDL_LogMessage() for the non-variadic case. Defined in
+ * sdl_helpers.c (merged into libSDL3.a).
+ */
+void SDL_kmp_LogMessage(int category, unsigned int priority, const char *message);
+
+/*
+ * size_t-neutral wrappers so the binding compiles identically on 32-bit and
+ * 64-bit targets (Kotlin/Native maps size_t to different Kotlin types).
+ * Defined in sdl_helpers.c (merged into libSDL3.a).
+ */
+#include <stddef.h>
+struct SDL_IOStream;
+struct SDL_Process;
+size_t SDL_kmp_ReadIO(struct SDL_IOStream *stream, void *buffer, int size);
+size_t SDL_kmp_WriteIO(struct SDL_IOStream *stream, const void *buffer, int size);
+struct SDL_IOStream *SDL_kmp_IOFromMem(void *mem, int size);
+struct SDL_IOStream *SDL_kmp_IOFromConstMem(const void *mem, int size);
+void *SDL_kmp_LoadFile(const char *path, int *size);
+void *SDL_kmp_LoadFileIO(struct SDL_IOStream *stream, int *size);
+void *SDL_kmp_ReadProcess(struct SDL_Process *process, int *size, int *exitcode);
+
+struct SDL_GPUDevice;
+struct SDL_GPUShader;
+struct SDL_GPUShader *SDL_kmp_CreateGPUShader(struct SDL_GPUDevice *device, const void *code, int code_size,
+                                              const char *entrypoint, unsigned int format, unsigned int stage,
+                                              unsigned int num_samplers, unsigned int num_storage_textures,
+                                              unsigned int num_storage_buffers, unsigned int num_uniform_buffers);

@@ -264,8 +264,8 @@ object SDLAudioFormat {
 
 /** Audio device IDs (values match SDL3's SDL_AudioDeviceID). */
 object SDLAudioDeviceID {
-    const val DEFAULT_PLAYBACK = 0xFFFFFFFF
-    const val DEFAULT_RECORDING = 0xFFFFFFFE
+    const val DEFAULT_PLAYBACK: Int = -1
+    const val DEFAULT_RECORDING: Int = -2
 }
 
 /** Audio device description (matches SDL3's SDL_AudioSpec fields used here). */
@@ -286,6 +286,12 @@ interface SDLAudioDevice : AutoCloseable {
 
     /** Unbinds [stream] from this device. */
     fun unbindStream(stream: SDLAudioStream)
+
+    /** Pauses playback on this device. */
+    fun pause()
+
+    /** Resumes playback on this device. */
+    fun resume()
 
     /** Releases the device. */
     override fun close()
@@ -308,12 +314,42 @@ interface SDLAudioStream : AutoCloseable {
     /** Number of bytes queued (after conversion). */
     val queued: Int
 
+    /** The stream's input format, or null when unavailable. */
+    val inputSpec: SDLAudioSpec?
+
+    /** The stream's output format, or null when unavailable. */
+    val outputSpec: SDLAudioSpec?
+
+    /** Changes the stream's input/output format; returns `false` on failure. */
+    fun setFormat(src: SDLAudioSpec, dst: SDLAudioSpec): Boolean
+
+    /** The output gain (1.0 = unchanged); setting returns `false` on failure. */
+    var gain: Float
+
+    /** The playback speed ratio (1.0 = normal); setting returns `false` on failure. */
+    var frequencyRatio: Float
+
+    /**
+     * Whether the device playback of this stream is paused. SDL_OpenAudioDeviceStream
+     * starts the stream paused, so set this to `false` (or call [resume]) to hear audio.
+     */
+    var devicePaused: Boolean
+
+    /** Unpauses the stream's device playback (see [devicePaused]). */
+    fun resume()
+
+    /** Pauses the stream's device playback (see [devicePaused]). */
+    fun pause()
+
     fun flush(): Boolean
     fun clear(): Boolean
 
     /** Releases the stream. */
     override fun close()
 }
+
+/** A loaded WAV file. */
+data class SDLAudioData(val spec: SDLAudioSpec, val data: ByteArray)
 
 // =========================================================================
 // Input
@@ -361,6 +397,8 @@ interface SDLJoystick : AutoCloseable {
     val numBalls: Int
     val numHats: Int
     val numButtons: Int
+    val playerIndex: Int
+    val firmwareVersion: Int
 
     fun axis(axis: Int): Short
     fun button(button: Int): Boolean
@@ -384,14 +422,67 @@ interface SDLGamepad : AutoCloseable {
     val product: Int
     val serial: String?
     val connected: Boolean
+    val playerIndex: Int
+    val firmwareVersion: Int
+    val touchpadCount: Int
 
     fun button(button: Int): Boolean
     fun axis(axis: Int): Short
+
+    /** The state of the finger on [touchpad]/[finger], or null. */
+    fun touchpadFinger(touchpad: Int, finger: Int): SDLTouchpadFinger?
+
+    /** Whether the gamepad has a sensor of [type] (see [SDLSensorType]). */
+    fun hasSensor(type: Int): Boolean
+
+    /** The current sensor readings (see [SDLSensorType]), or null on failure. */
+    fun sensorData(type: Int): FloatArray?
+
+    /** The update rate of the sensor of [type], or 0 on failure. */
+    fun getSensorDataRate(type: Int): Float
+
     fun rumble(lowFrequency: Int, highFrequency: Int, durationMs: Int): Boolean
 
     /** Releases the gamepad. */
     override fun close()
 }
+
+/** A finger on a gamepad touchpad. */
+data class SDLTouchpadFinger(
+    val touchpad: Int,
+    val finger: Int,
+    val down: Boolean,
+    val x: Float,
+    val y: Float,
+    val pressure: Float,
+)
+
+/** A finger on a touch device. */
+data class SDLTouchFinger(
+    val id: ULong,
+    val x: Float,
+    val y: Float,
+    val pressure: Float,
+    val down: Boolean,
+)
+
+/** Touch device types (values match SDL3's SDL_TouchDeviceType). */
+object SDLTouchDeviceType {
+    const val INVALID = -1
+    const val DIRECT = 0
+    const val INDIRECT_ABSOLUTE = 1
+    const val INDIRECT_RELATIVE = 2
+}
+
+/** A vertex for [SDLRenderer.renderGeometry]. */
+data class SDLVertex(
+    val position: SDLFloatPoint,
+    val color: SDLColor = SDLColor(255, 255, 255, 255),
+    val texCoord: SDLFloatPoint = SDLFloatPoint(0f, 0f),
+)
+
+/** A file type filter for [SDL.showOpenFileDialog]. */
+data class SDLDialogFileFilter(val name: String, val pattern: String)
 
 // =========================================================================
 // Misc

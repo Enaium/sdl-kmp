@@ -42,6 +42,9 @@ interface SDLSurface : AutoCloseable {
     /** The pixel format, see [SDLPixelFormat]. */
     val format: Int
 
+    /** The surface colorspace, or 0 (SDL_COLORSPACE_UNKNOWN). */
+    val colorspace: Int
+
     /** The number of bytes per row. */
     val pitch: Int
 
@@ -57,8 +60,19 @@ interface SDLSurface : AutoCloseable {
     /** Fills [rect] (null = whole surface) with [color]. */
     fun fillRect(rect: SDLRect?, color: SDLColor): Boolean
 
+    /** Fills all [rects] with [color]; returns `false` on failure. */
+    fun fillRects(rects: List<SDLRect>, color: SDLColor): Boolean
+
     /** Blits [src] (null = whole surface) of this surface onto [dst]. */
     fun blit(src: SDLRect?, dst: SDLSurface, dstRect: SDLRect?): Boolean
+
+    /** Blits and scales [src] (null = whole surface) onto [dstRect]. */
+    fun blitScaled(
+        src: SDLRect?,
+        dst: SDLSurface,
+        dstRect: SDLRect?,
+        scaleMode: Int = SDLScaleMode.NEAREST,
+    ): Boolean
 
     /** Saves the surface as a BMP file; returns `false` on failure. */
     fun saveBMP(path: String): Boolean
