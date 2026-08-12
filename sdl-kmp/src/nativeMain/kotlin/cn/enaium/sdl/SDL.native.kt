@@ -2133,7 +2133,7 @@ actual object SDL {
 
     actual fun glGetProcAddress(proc: String): ULong {
         val fn = SDL_GL_GetProcAddress(proc) ?: return 0uL
-        return fn.reinterpret<ULongVar>().pointed.value
+        return fn.rawValue.toLong().toULong()
     }
 
     actual fun glExtensionSupported(extension: String): Boolean =
@@ -2158,7 +2158,7 @@ actual object SDL {
     actual fun glCreateContext(windowId: Int): ULong {
         val window = SDL_GetWindowFromID(windowId.toUInt()) ?: return 0uL
         val ctx = SDL_GL_CreateContext(window) ?: return 0uL
-        return ctx.reinterpret<ULongVar>().pointed.value
+        return ctx.rawValue.toLong().toULong()
     }
 
     actual fun glMakeCurrent(windowId: Int, context: ULong): Boolean {
@@ -2173,7 +2173,7 @@ actual object SDL {
     actual val glCurrentContext: ULong
         get() {
             val ctx = SDL_GL_GetCurrentContext() ?: return 0uL
-            return ctx.reinterpret<ULongVar>().pointed.value
+            return ctx.rawValue.toLong().toULong()
         }
 
     actual fun glSetSwapInterval(interval: Int): Boolean =
@@ -2211,7 +2211,7 @@ actual object SDL {
     actual val vulkanGetVkGetInstanceProcAddr: ULong
         get() {
             val fn = SDL_Vulkan_GetVkGetInstanceProcAddr() ?: return 0uL
-            return fn.reinterpret<ULongVar>().pointed.value
+            return fn.rawValue.toLong().toULong()
         }
 
     actual val vulkanInstanceExtensions: List<String>
