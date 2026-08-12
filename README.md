@@ -2,21 +2,22 @@
 
 Kotlin Multiplatform bindings for [SDL3](https://github.com/libsdl-org/SDL), with a curated common API backed by two implementations:
 
-- **JVM**: the official [LWJGL](https://www.lwjgl.org) SDL3 bindings (`org.lwjgl:lwjgl-sdl`). LWJGL does not support Android, so there is no Android target.
-- **Native (Kotlin/Native)**: the SDL3 static library from this repository's `SDL` submodule is compiled per target with CMake and **embedded into the published klib**, so consumers get a fully self-contained binary (no dynamic SDL3 dependency).
+- **JVM**: the official [LWJGL](https://www.lwjgl.org) SDL3 bindings (`org.lwjgl:lwjgl-sdl`).
+- **Native (Kotlin/Native)**: the SDL3 static library from this repository's `SDL` submodule is compiled per target with CMake and **embedded into the published klib**, so consumers get a fully self-contained binary (no dynamic SDL3 dependency). This includes the Android native targets (`androidNative*`), cross-compiled with the Android NDK.
 
 ## Supported platforms
 
-| Platform   | Targets                                        | Implementation                     |
-|------------|------------------------------------------------|------------------------------------|
-| JVM        | `jvm` (Linux/macOS/Windows)                    | LWJGL SDL3 bindings                |
-| macOS      | `macosArm64`, `macosX64`                       | cinterop + embedded static SDL3    |
-| Linux      | `linuxX64`                                     | cinterop + embedded static SDL3    |
-| Windows    | `mingwX64`                                     | cinterop + embedded static SDL3    |
-| iOS        | `iosArm64`, `iosX64`, `iosSimulatorArm64`      | cinterop + embedded static SDL3    |
-| tvOS       | `tvosArm64`, `tvosSimulatorArm64`              | cinterop + embedded static SDL3    |
+| Platform   | Targets                                             | Implementation                     |
+|------------|-----------------------------------------------------|------------------------------------|
+| JVM        | `jvm` (Linux/macOS/Windows)                         | LWJGL SDL3 bindings                |
+| macOS      | `macosArm64`, `macosX64`                            | cinterop + embedded static SDL3    |
+| Linux      | `linuxX64`                                          | cinterop + embedded static SDL3    |
+| Windows    | `mingwX64`                                          | cinterop + embedded static SDL3    |
+| iOS        | `iosArm64`, `iosX64`, `iosSimulatorArm64`           | cinterop + embedded static SDL3    |
+| tvOS       | `tvosArm64`, `tvosSimulatorArm64`                   | cinterop + embedded static SDL3    |
+| Android    | `androidNativeArm64`, `androidNativeArm32`, `androidNativeX64`, `androidNativeX86` | cinterop + embedded static SDL3 (built with the NDK) |
 
-Not supported: Android (LWJGL does not support it), JS/WASM (out of scope), watchOS (SDL3 has no watchOS support) and visionOS (Kotlin/Native has no visionOS targets yet).
+Not supported: JS/WASM (out of scope), watchOS (SDL3 has no watchOS support) and visionOS (Kotlin/Native has no visionOS targets yet).
 
 ## Usage
 
@@ -26,7 +27,7 @@ Not supported: Android (LWJGL does not support it), JS/WASM (out of scope), watc
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("cn.enaium.sdl:sdl-kmp:1.0.2")
+            implementation("cn.enaium.sdl:sdl-kmp:1.0.3")
         }
     }
 }
@@ -87,6 +88,7 @@ fun main() {
 - The `SDL_VIDEO_DRIVER=dummy` hint (environment variable or `SDL.setHint`) makes SDL run headless — useful for CI and servers.
 - **macOS JVM**: requires `-XstartOnFirstThread` JVM argument (so AppKit/Cocoa can initialise). The example `runJvm` task already sets this.
 - On Linux the static SDL3 is built with the X11/Wayland drivers loaded dynamically (`dlopen`), so the published klib has no link-time dependency on X11.
+- **Android**: building an `androidNative*` target requires an installed Android NDK (found under `$ANDROID_HOME/ndk`); the SDL3 static library is cross-compiled with its CMake toolchain. At runtime the app must be launched through `org.libsdl.app.SDLActivity` (or a subclass), which loads the shared library and calls its exported `SDL_main` (see the `example-android` module).
 
 ### Native linking
 
@@ -110,6 +112,22 @@ SDL_VIDEO_DRIVER=dummy ./gradlew :example:runJvm
 SDL_VIDEO_DRIVER=dummy ./gradlew :example:runDebugExecutableLinuxX64
 ```
 
+### Android example
+
+The `example-android` module is an Android application (AGP) that runs the same
+demo. `example` builds `libmain.so` for every `androidNative` ABI (exporting
+`SDL_main` from `androidMain`); `example-android` copies those into its `jniLibs`
+and its `MainActivity` extends `org.libsdl.app.SDLActivity` (loaded from the SDL
+submodule so it matches the statically linked SDL3 version), which loads
+`libmain.so` and calls `SDL_main`.
+
+```bash
+# Build the APK (requires an Android NDK; install the app on a device/emulator
+# with adb).
+./gradlew :example-android:assembleDebug
+adb install -r example-android/build/outputs/apk/debug/example-android-debug.apk
+```
+
 ## Development
 
 ```bash
@@ -120,8 +138,8 @@ SDL_VIDEO_DRIVER=dummy ./gradlew :example:runDebugExecutableLinuxX64
 
 ## GitHub Actions
 
-- `.github/workflows/test.yml` — runs on push/PR: macOS builds all Apple klibs and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `mingwX64`, and runs the example headless on both runners.
-- `.github/workflows/publish.yml` — manual workflow that publishes the metadata + JVM + Apple klibs from `macos-14` and the `linuxX64`/`mingwX64` klibs from `ubuntu-latest` to Maven Central.
+- `.github/workflows/test.yml` — manual trigger: macOS builds all Apple klibs and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `mingwX64`, and runs the example headless; Android installs the NDK, builds the four `androidNative` klibs and assembles the `example-android` APK.
+- `.github/workflows/publish.yml` — manual workflow that publishes the metadata + JVM + Apple klibs from `macos-14`, the `linuxX64`/`mingwX64` klibs from `ubuntu-latest`, and the four `androidNative` klibs from `ubuntu-latest` (with the NDK) to Maven Central.
 
 Required secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` (base64 GPG keyring), `SIGNING_KEY_ID`, `SIGNING_PASSWORD`.
 
