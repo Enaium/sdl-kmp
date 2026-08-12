@@ -11,6 +11,9 @@ name: Test
 #   Linux x64   -> linuxX64 klib (with embedded static library) and the
 #                  cross-compiled mingwX64 klib, JVM + native tests, and
 #                  the example app (native, headless)
+#   Android x64 -> the four androidNative klibs (with the embedded static
+#                  library built via the Android NDK) and the example-android
+#                  APK (assembleDebug)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -119,3 +122,42 @@ jobs:
 
       - name: Run example (linuxX64, headless)
         run: SDL_VIDEO_DRIVER=dummy ./gradlew --no-daemon :example:runDebugExecutableLinuxX64
+
+  test-android:
+    name: Test Android (androidNative + APK)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Configure JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # Kotlin/Native cross-compiles the androidNative targets from any host,
+      # but SDL3's static library needs the Android NDK.
+      - name: Install Android NDK
+        run: |
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.0.12077973" "platforms;android-35" >/dev/null
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          # The SDL submodule ships its own wrapper jar (android-project),
+          # which is not part of the action's known-good checksum list.
+          validate-wrappers: false
+
+      - name: Build androidNative klibs
+        run: >
+          ./gradlew --no-daemon --stacktrace
+          :sdl-kmp:compileKotlinAndroidNativeArm64
+          :sdl-kmp:compileKotlinAndroidNativeArm32
+          :sdl-kmp:compileKotlinAndroidNativeX64
+          :sdl-kmp:compileKotlinAndroidNativeX86
+
+      - name: Assemble example Android APK
+        run: ./gradlew --no-daemon --stacktrace :example-android:assembleDebug

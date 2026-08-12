@@ -3,8 +3,6 @@ import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
-@OptIn(ExperimentalKotlinGradlePluginApi::class)
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.maven.publish)
@@ -30,6 +28,22 @@ fun hasMingwCrossToolchain(): Boolean {
     }
 }
 
+// Locates an installed Android NDK, preferring the highest version under
+// $ANDROID_HOME (or $ANDROID_SDK_ROOT, or ~/Android/Sdk). androidNative
+// targets cross-compile the SDL3 static library with this toolchain.
+fun androidNdkPath(): String? {
+    val home = System.getenv("ANDROID_HOME")
+        ?: System.getenv("ANDROID_SDK_ROOT")
+        ?: System.getProperty("user.home") + "/Android/Sdk"
+    val ndkDir = File(home, "ndk")
+    if (!ndkDir.isDirectory) return null
+    return ndkDir.listFiles()
+        ?.filter { it.isDirectory && it.name.matches(Regex("\\d+\\.\\d+\\.\\d+.*")) }
+        ?.sortedBy { it.name }
+        ?.lastOrNull()
+        ?.absolutePath
+}
+
 fun canBuildNativeTarget(targetName: String): Boolean {
     return when {
         hostOs.isMacOsX && (
@@ -40,6 +54,7 @@ fun canBuildNativeTarget(targetName: String): Boolean {
 
         hostOs.isLinux && targetName == "linuxX64" -> true
         hostOs.isLinux && targetName == "mingwX64" && hasMingwCrossToolchain() -> true
+        targetName.startsWith("androidNative") && androidNdkPath() != null -> true
         else -> false
     }
 }
@@ -98,6 +113,10 @@ kotlin {
     macosX64()
 
     linuxX64()
+    androidNativeArm64()
+    androidNativeArm32()
+    androidNativeX64()
+    androidNativeX86()
 
     mingwX64()
 
@@ -345,6 +364,24 @@ if (hostOs.isMacOsX) {
             "-DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++",
         ),
     )
+}
+
+// Android native targets cross-compile SDL3 with the NDK (see
+// canBuildNativeTarget); the NDK can be used from any host OS.
+androidNdkPath()?.let { ndk ->
+    val toolchain = "$ndk/build/cmake/android.toolchain.cmake"
+    val androidFlags = { abi: String, platform: String ->
+        listOf(
+            "-DCMAKE_TOOLCHAIN_FILE=$toolchain",
+            "-DANDROID_ABI=$abi",
+            "-DANDROID_PLATFORM=$platform",
+            "-DANDROID_STL=c++_static",
+        )
+    }
+    registerNativeBuildTasks("androidNativeArm64", androidFlags("arm64-v8a", "android-24"))
+    registerNativeBuildTasks("androidNativeArm32", androidFlags("armeabi-v7a", "android-24"))
+    registerNativeBuildTasks("androidNativeX64", androidFlags("x86_64", "android-24"))
+    registerNativeBuildTasks("androidNativeX86", androidFlags("x86", "android-24"))
 }
 
 // ==================== Publishing ====================

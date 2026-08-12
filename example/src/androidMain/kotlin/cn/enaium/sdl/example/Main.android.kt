@@ -20,33 +20,28 @@
  * SOFTWARE.
  */
 
-/*
- * Additional declarations for cinterop. Keep this header self-contained:
- * it is compiled by cinterop against the SDKs, so no SDL3 build config is
- * available here.
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlin.experimental.ExperimentalNativeApi::class)
+
+package cn.enaium.sdl.example
+
+import cn.enaium.sdl.SDL
+import kotlin.native.CName
+import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.CPointerVar
+import kotlinx.cinterop.ByteVar
+
+/**
+ * SDL3 Android entry point.
+ *
+ * `SDLActivity` (from the SDL3 Android archive) loads `libmain.so` and calls
+ * the exported `SDL_main` symbol on a dedicated SDL thread. SDL itself was
+ * already initialized by the Java activity, so the example just runs.
+ *
+ * `argv` is left untouched (SDLActivity builds the real argument vector).
  */
-
-#ifndef CINTEROP_HELPERS_H
-#define CINTEROP_HELPERS_H
-
-#include <stdbool.h>
-#include <stdint.h>
-
-/*
- * Wrapper around SDL_SetError() for the non-variadic case (cinterop cannot
- * bind variadic functions). Defined in sdl_helpers.c, which is merged into
- * libSDL3.a by the wrapper CMake build.
- */
-bool SDL_kmp_SetError(const char *message);
-
-/*
- * Vulkan surface helpers with a stable cross-platform signature. SDL3's
- * VkSurfaceKHR is a uint64_t on 32-bit targets without Vulkan headers but a
- * pointer on 64-bit targets, which would otherwise split the cinterop
- * binding. Defined in sdl_vulkan_helpers.c (also merged into libSDL3.a).
- */
-bool SDL_kmp_VulkanCreateSurface(void *window, void *instance, uint64_t *surface);
-void SDL_kmp_VulkanDestroySurface(void *instance, uint64_t surface);
-bool SDL_kmp_VulkanGetPresentationSupport(void *instance, void *physicalDevice, uint32_t queueFamilyIndex);
-
-#endif /* CINTEROP_HELPERS_H */
+@CName("SDL_main")
+fun sdlMain(argc: Int, argv: CPointer<CPointerVar<ByteVar>>?): Int {
+    runExample()
+    SDL.quit()
+    return 0
+}

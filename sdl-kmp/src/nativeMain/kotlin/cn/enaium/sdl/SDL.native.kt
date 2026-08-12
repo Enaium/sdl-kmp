@@ -26,15 +26,11 @@ package cn.enaium.sdl
 
 import kotlinx.cinterop.*
 import sdl3.*
-import cnames.structs.SDL_Window
-import cnames.structs.SDL_Renderer
-import cnames.structs.SDL_AudioStream
-import cnames.structs.SDL_Joystick
 import cnames.structs.SDL_Gamepad
 import cnames.structs.SDL_GLContextState
-import cnames.structs.VkInstance_T
-import cnames.structs.VkPhysicalDevice_T
-import cnames.structs.VkSurfaceKHR_T
+import cnames.structs.SDL_Joystick
+import cnames.structs.SDL_Renderer
+import cnames.structs.SDL_Window
 
 
 private fun CPointer<ByteVar>.toKStringOrNull(): String? = toKString()
@@ -1699,13 +1695,11 @@ actual object SDL {
 
     actual fun vulkanCreateSurface(windowId: Int, instance: ULong): ULong {
         val window = SDL_GetWindowFromID(windowId.toUInt()) ?: return 0uL
-        val surface = nativeHeap.alloc<VkSurfaceKHRVar>()
+        val surface = nativeHeap.alloc<ULongVar>()
         try {
-            val instancePtr = if (instance == 0uL) null else instance.toLong().toCPointer<VkInstance_T>()
-            val ok = SDL_Vulkan_CreateSurface(window, instancePtr, null, surface.ptr)
-            return if (ok) {
-                val vkSurface = surface.value ?: return@vulkanCreateSurface 0uL
-                vkSurface.reinterpret<ULongVar>().pointed.value
+            val instancePtr = if (instance == 0uL) null else instance.toLong().toCPointer<COpaque>()
+            return if (SDL_kmp_VulkanCreateSurface(window, instancePtr, surface.ptr)) {
+                surface.value
             } else {
                 0uL
             }
@@ -1716,14 +1710,14 @@ actual object SDL {
 
     actual fun vulkanDestroySurface(instance: ULong, surface: ULong) {
         if (surface != 0uL) {
-            val instancePtr = if (instance == 0uL) null else instance.toLong().toCPointer<VkInstance_T>()
-            SDL_Vulkan_DestroySurface(instancePtr, surface.toLong().toCPointer<VkSurfaceKHR_T>(), null)
+            val instancePtr = if (instance == 0uL) null else instance.toLong().toCPointer<COpaque>()
+            SDL_kmp_VulkanDestroySurface(instancePtr, surface)
         }
     }
 
     actual fun vulkanGetPresentationSupport(instance: ULong, physicalDevice: ULong, queueFamilyIndex: Int): Boolean {
-        val instancePtr = if (instance == 0uL) null else instance.toLong().toCPointer<VkInstance_T>()
-        val devicePtr = if (physicalDevice == 0uL) null else physicalDevice.toLong().toCPointer<VkPhysicalDevice_T>()
-        return SDL_Vulkan_GetPresentationSupport(instancePtr, devicePtr, queueFamilyIndex.toUInt())
+        val instancePtr = if (instance == 0uL) null else instance.toLong().toCPointer<COpaque>()
+        val devicePtr = if (physicalDevice == 0uL) null else physicalDevice.toLong().toCPointer<COpaque>()
+        return SDL_kmp_VulkanGetPresentationSupport(instancePtr, devicePtr, queueFamilyIndex.toUInt())
     }
 }

@@ -49,7 +49,7 @@ set(SDL_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(${SDL_SOURCE_DIR} SDL)
 
-add_library(sdl3-kmp-helpers OBJECT sdl_helpers.c)
+add_library(sdl3-kmp-helpers OBJECT sdl_helpers.c sdl_vulkan_helpers.c)
 target_include_directories(sdl3-kmp-helpers PRIVATE ${SDL_SOURCE_DIR}/include)
 
 # glibc 2.38+ compatibility shims (strlcpy/strlcat/__isoc23_*) so the static

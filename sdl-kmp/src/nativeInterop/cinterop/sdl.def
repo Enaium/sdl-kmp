@@ -11,3 +11,9 @@ linkerOpts.ios = -framework Foundation -framework CoreVideo -framework CoreGraph
 linkerOpts.tvos = -framework Foundation -framework CoreVideo -framework CoreGraphics -framework QuartzCore -framework Metal -framework CoreAudio -framework AudioToolbox -framework AVFoundation -framework Security -framework UIKit -framework GameController -framework CoreBluetooth -framework UserNotifications -framework CoreMotion -weak_framework CoreHaptics -weak_framework UniformTypeIdentifiers
 linkerOpts.linux = -lm -ldl -lpthread
 linkerOpts.mingw = -luser32 -lgdi32 -lwinmm -lversion -lsetupapi -limm32 -lole32 -luuid -lcomdlg32 -lshell32
+# Android: SDL3's android drivers reference the NDK system libraries. Most are
+# provided by the Kotlin/Native android sysroot; EGL/GLES/OpenSLES/AAudio come
+# from the NDK, so consumers must add the NDK's <abi>/lib directory to the
+# linker search path (the sdl-kmp build passes it for the androidNative
+# targets it produces).
+linkerOpts.android = -landroid -llog -lEGL -lGLESv1_CM -lGLESv2 -lOpenSLES -laaudio -ldl -lm

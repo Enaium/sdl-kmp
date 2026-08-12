@@ -23,3 +23,4 @@ rootProject.name = "sdl-kmp"
 
 include(":sdl-kmp")
 include(":example")
+include(":example-android")
