@@ -26,7 +26,7 @@ Not supported: Android (LWJGL does not support it), JS/WASM (out of scope), watc
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("cn.enaium.sdl:sdl-kmp:1.0.0")
+            implementation("cn.enaium.sdl:sdl-kmp:1.0.2")
         }
     }
 }

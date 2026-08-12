@@ -45,123 +45,106 @@
 #include <stdlib.h>
 #include <string.h>
 #include <spawn.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 #include <wchar.h>
 
-#ifdef strtol
-#undef strtol
-#endif
-#ifdef strtoul
-#undef strtoul
-#endif
-#ifdef strtoll
-#undef strtoll
-#endif
-#ifdef strtoull
-#undef strtoull
-#endif
-#ifdef strtof
-#undef strtof
-#endif
-#ifdef strtod
-#undef strtod
-#endif
-#ifdef strtold
-#undef strtold
-#endif
-#ifdef fscanf
-#undef fscanf
-#endif
-#ifdef vfscanf
-#undef vfscanf
-#endif
-#ifdef sscanf
-#undef sscanf
-#endif
-#ifdef vsscanf
-#undef vsscanf
-#endif
-#ifdef wcstol
-#undef wcstol
-#endif
-#ifdef wcstoul
-#undef wcstoul
-#endif
-#ifdef wcstoll
-#undef wcstoll
-#endif
-#ifdef wcstoull
-#undef wcstoull
-#endif
+/*
+ * The __isoc23_* functions are glibc 2.38+ C23-semantics versions of strtol
+ * & friends. SDL compiled against a modern glibc references them because
+ * glibc redirects the calls at the asm-name level when _GNU_SOURCE is
+ * defined, but the Kotlin/Native bundled sysroot (glibc 2.19) does not
+ * provide them.
+ *
+ * That redirect is a compiler attribute (the symbols get renamed, e.g.
+ * strtol -> __isoc23_strtol), NOT a preprocessor macro, so #undef does not
+ * help: a call to strtol() from inside these wrappers would be redirected
+ * straight back into __isoc23_strtol, recursing forever. Instead, call the
+ * real libc symbols through explicit asm labels below.
+ */
+extern long int __sdl_glibc_strtol(const char *nptr, char **endptr, int base) __asm__("strtol");
+extern unsigned long int __sdl_glibc_strtoul(const char *nptr, char **endptr, int base) __asm__("strtoul");
+extern long long int __sdl_glibc_strtoll(const char *nptr, char **endptr, int base) __asm__("strtoll");
+extern unsigned long long int __sdl_glibc_strtoull(const char *nptr, char **endptr, int base) __asm__("strtoull");
+extern float __sdl_glibc_strtof(const char *nptr, char **endptr) __asm__("strtof");
+extern double __sdl_glibc_strtod(const char *nptr, char **endptr) __asm__("strtod");
+extern long double __sdl_glibc_strtold(const char *nptr, char **endptr) __asm__("strtold");
+extern int __sdl_glibc_vfscanf(FILE *stream, const char *format, va_list ap) __asm__("vfscanf");
+extern int __sdl_glibc_vsscanf(const char *s, const char *format, va_list ap) __asm__("vsscanf");
+extern long int __sdl_glibc_wcstol(const wchar_t *nptr, wchar_t **endptr, int base) __asm__("wcstol");
+extern unsigned long int __sdl_glibc_wcstoul(const wchar_t *nptr, wchar_t **endptr, int base) __asm__("wcstoul");
+extern long long int __sdl_glibc_wcstoll(const wchar_t *nptr, wchar_t **endptr, int base) __asm__("wcstoll");
+extern unsigned long long int __sdl_glibc_wcstoull(const wchar_t *nptr, wchar_t **endptr, int base) __asm__("wcstoull");
 
 long int __isoc23_strtol(const char *nptr, char **endptr, int base)
 {
-    return strtol(nptr, endptr, base);
+    return __sdl_glibc_strtol(nptr, endptr, base);
 }
 unsigned long int __isoc23_strtoul(const char *nptr, char **endptr, int base)
 {
-    return strtoul(nptr, endptr, base);
+    return __sdl_glibc_strtoul(nptr, endptr, base);
 }
 long long int __isoc23_strtoll(const char *nptr, char **endptr, int base)
 {
-    return strtoll(nptr, endptr, base);
+    return __sdl_glibc_strtoll(nptr, endptr, base);
 }
 unsigned long long int __isoc23_strtoull(const char *nptr, char **endptr, int base)
 {
-    return strtoull(nptr, endptr, base);
+    return __sdl_glibc_strtoull(nptr, endptr, base);
 }
 float __isoc23_strtof(const char *nptr, char **endptr)
 {
-    return strtof(nptr, endptr);
+    return __sdl_glibc_strtof(nptr, endptr);
 }
 double __isoc23_strtod(const char *nptr, char **endptr)
 {
-    return strtod(nptr, endptr);
+    return __sdl_glibc_strtod(nptr, endptr);
 }
 long double __isoc23_strtold(const char *nptr, char **endptr)
 {
-    return strtold(nptr, endptr);
+    return __sdl_glibc_strtold(nptr, endptr);
 }
 int __isoc23_fscanf(FILE *stream, const char *format, ...)
 {
     va_list ap;
     int result;
     va_start(ap, format);
-    result = vfscanf(stream, format, ap);
+    result = __sdl_glibc_vfscanf(stream, format, ap);
     va_end(ap);
     return result;
 }
 int __isoc23_vfscanf(FILE *stream, const char *format, va_list ap)
 {
-    return vfscanf(stream, format, ap);
+    return __sdl_glibc_vfscanf(stream, format, ap);
 }
 int __isoc23_sscanf(const char *s, const char *format, ...)
 {
     va_list ap;
     int result;
     va_start(ap, format);
-    result = vsscanf(s, format, ap);
+    result = __sdl_glibc_vsscanf(s, format, ap);
     va_end(ap);
     return result;
 }
 int __isoc23_vsscanf(const char *s, const char *format, va_list ap)
 {
-    return vsscanf(s, format, ap);
+    return __sdl_glibc_vsscanf(s, format, ap);
 }
 long int __isoc23_wcstol(const wchar_t *nptr, wchar_t **endptr, int base)
 {
-    return wcstol(nptr, endptr, base);
+    return __sdl_glibc_wcstol(nptr, endptr, base);
 }
 unsigned long int __isoc23_wcstoul(const wchar_t *nptr, wchar_t **endptr, int base)
 {
-    return wcstoul(nptr, endptr, base);
+    return __sdl_glibc_wcstoul(nptr, endptr, base);
 }
 long long int __isoc23_wcstoll(const wchar_t *nptr, wchar_t **endptr, int base)
 {
-    return wcstoll(nptr, endptr, base);
+    return __sdl_glibc_wcstoll(nptr, endptr, base);
 }
 unsigned long long int __isoc23_wcstoull(const wchar_t *nptr, wchar_t **endptr, int base)
 {
-    return wcstoull(nptr, endptr, base);
+    return __sdl_glibc_wcstoull(nptr, endptr, base);
 }
 
 /* BSD-style strlcpy/strlcat (glibc >= 2.38 provides them; older glibc and
@@ -222,4 +205,14 @@ int posix_spawn_file_actions_addchdir_np(posix_spawn_file_actions_t *actions, co
     (void)actions;
     (void)path;
     return ENOSYS;
+}
+
+/* memfd_create(2) was added to glibc in 2.27, but the Kotlin/Native bundled
+ * Linux sysroot (glibc 2.19) does not provide it, so SDL's direct calls
+ * (DBus portal notifications, Wayland shared-memory buffers) fail to link.
+ * Route through the raw syscall (kernel >= 3.17); it is only pulled from the
+ * archive where the real symbol does not exist. */
+int memfd_create(const char *name, unsigned int flags)
+{
+    return (int)syscall(SYS_memfd_create, name, flags);
 }

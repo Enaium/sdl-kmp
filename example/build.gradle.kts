@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.gradle.internal.os.OperatingSystem
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -32,6 +33,12 @@ kotlin {
             dependsOn(nativeMain)
         }
 
+        jvm {
+            mainRun {
+                mainClass = "cn.enaium.sdl.example.Main_jvmKt"
+            }
+        }
+
         commonMain {
             dependencies {
                 implementation(project(":sdl-kmp"))
@@ -40,15 +47,8 @@ kotlin {
     }
 }
 
-// The `application` plugin is incompatible with Kotlin Multiplatform, so the
-// JVM run task is registered manually.
-tasks.register<JavaExec>("runJvm") {
-    group = "application"
-    description = "Runs the example on the JVM."
-    mainClass.set(providers.gradleProperty("example.mainClass").orElse("cn.enaium.sdl.example.Main_jvmKt"))
-    val compilation = kotlin.targets.getByName("jvm").compilations.getByName("main")
-    classpath = files(compilation.output.allOutputs, compilation.runtimeDependencyFiles)
-    // JDK 22+ requires explicit native access for JNI-based libraries like LWJGL.
-    // macOS requires -XstartOnFirstThread so AppKit/Cocoa can initialise.
-    jvmArgs("--enable-native-access=ALL-UNNAMED", "-XstartOnFirstThread")
+tasks.withType(JavaExec::class.java).configureEach {
+    if (OperatingSystem.current().isMacOsX && name == "jvmRun") {
+        jvmArgs("--enable-native-access=ALL-UNNAMED", "-XstartOnFirstThread")
+    }
 }

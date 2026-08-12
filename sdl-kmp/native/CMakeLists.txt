@@ -67,7 +67,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E make_directory ${SDL3_KMP_OUTPUT_DIR}
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3-static> ${SDL3_KMP_MERGED_ARCHIVE}
     COMMAND ${CMAKE_AR} rcs ${SDL3_KMP_MERGED_ARCHIVE} $<TARGET_OBJECTS:sdl3-kmp-helpers>
-    DEPENDS SDL3-static sdl3-kmp-helpers
+    DEPENDS SDL3-static $<TARGET_OBJECTS:sdl3-kmp-helpers>
     COMMENT "Merging sdl3-kmp helpers into libSDL3.a"
     COMMAND_EXPAND_LISTS
 )
