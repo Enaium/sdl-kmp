@@ -214,8 +214,12 @@ kotlin {
             dependencies {
                 val lwjglVersion = libs.versions.lwjgl.get()
                 implementation("org.lwjgl:lwjgl-opengles:$lwjglVersion")
+                implementation("org.lwjgl:lwjgl-opengl:$lwjglVersion")
                 listOf("linux", "macos", "macos-arm64", "windows").forEach { classifier ->
                     runtimeOnly("org.lwjgl:lwjgl-opengles:$lwjglVersion") {
+                        artifact { this.classifier = "natives-$classifier" }
+                    }
+                    runtimeOnly("org.lwjgl:lwjgl-opengl:$lwjglVersion") {
                         artifact { this.classifier = "natives-$classifier" }
                     }
                 }

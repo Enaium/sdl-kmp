@@ -28,6 +28,10 @@
  * points through SDL_GL_GetProcAddress, compiles a #version 300 es triangle
  * shader pair and draws it. Minimal GL types are defined here so no GLES
  * development headers are required to build.
+ *
+ * On platforms without OpenGL ES (macOS has no EGL support), the caller
+ * creates a desktop GL 3.3 core context instead; the GLSL version is picked
+ * from the actual context profile here, mirroring sdl_kmp_gl.c.
  */
 
 #include <stdbool.h>
@@ -55,6 +59,8 @@ typedef void (*GLESfn)(void);
 
 typedef struct GLESTriangleCtx {
     GLuint program;
+    GLuint vao;
+    int has_vao;
 } GLESTriangleCtx;
 
 /* function pointers */
@@ -73,8 +79,11 @@ static void (SDLCALL *kmp_glesViewport)(GLint, GLint, GLsizei, GLsizei);
 static void (SDLCALL *kmp_glesClear)(GLbitfield);
 static void (SDLCALL *kmp_glesClearColor)(GLfloat, GLfloat, GLfloat, GLfloat);
 static void (SDLCALL *kmp_glesDrawArrays)(GLenum, GLint, GLsizei);
+static void (SDLCALL *kmp_glesGenVertexArrays)(GLsizei, GLuint *);
+static void (SDLCALL *kmp_glesBindVertexArray)(GLuint);
 static void (SDLCALL *kmp_glesDeleteProgram)(GLuint);
 static void (SDLCALL *kmp_glesDeleteShader)(GLuint);
+static void (SDLCALL *kmp_glesDeleteVertexArrays)(GLsizei, const GLuint *);
 
 static GLESfn kmp_glesGet(const char *name)
 {
@@ -115,29 +124,54 @@ void *SDL_kmp_GLESTriangleInit(void)
     kmp_glesClear = (void *)kmp_glesGet("glClear");
     kmp_glesClearColor = (void *)kmp_glesGet("glClearColor");
     kmp_glesDrawArrays = (void *)kmp_glesGet("glDrawArrays");
+    kmp_glesGenVertexArrays = (void *)kmp_glesGet("glGenVertexArrays");
+    kmp_glesBindVertexArray = (void *)kmp_glesGet("glBindVertexArray");
     kmp_glesDeleteProgram = (void *)kmp_glesGet("glDeleteProgram");
     kmp_glesDeleteShader = (void *)kmp_glesGet("glDeleteShader");
+    kmp_glesDeleteVertexArrays = (void *)kmp_glesGet("glDeleteVertexArrays");
 
     if (!kmp_glesCreateShader || !kmp_glesCreateProgram || !kmp_glesDrawArrays || !kmp_glesClear) {
         SDL_SetError("GLES functions not available");
         return NULL;
     }
 
-    const char *vs_src =
-        "#version 300 es\n"
-        "out vec3 vColor;\n"
-        "void main() {\n"
-        "  vec2 p[3] = vec2[3](vec2(-0.75, -0.75), vec2(0.75, -0.75), vec2(0.0, 0.75));\n"
-        "  vec3 c[3] = vec3[3](vec3(1.0, 0.25, 0.35), vec3(0.25, 1.0, 0.35), vec3(0.25, 0.35, 1.0));\n"
-        "  gl_Position = vec4(p[gl_VertexID], 0.0, 1.0);\n"
-        "  vColor = c[gl_VertexID];\n"
-        "}\n";
-    const char *fs_src =
-        "#version 300 es\n"
-        "precision mediump float;\n"
-        "in vec3 vColor;\n"
-        "layout(location=0) out vec4 c;\n"
-        "void main() { c = vec4(vColor, 1.0); }\n";
+    const char *vs_src;
+    const char *fs_src;
+
+    int profile = 0;
+    SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &profile);
+    if (profile == SDL_GL_CONTEXT_PROFILE_ES) {
+        vs_src =
+            "#version 300 es\n"
+            "out vec3 vColor;\n"
+            "void main() {\n"
+            "  vec2 p[3] = vec2[3](vec2(-0.75, -0.75), vec2(0.75, -0.75), vec2(0.0, 0.75));\n"
+            "  vec3 c[3] = vec3[3](vec3(1.0, 0.25, 0.35), vec3(0.25, 1.0, 0.35), vec3(0.25, 0.35, 1.0));\n"
+            "  gl_Position = vec4(p[gl_VertexID], 0.0, 1.0);\n"
+            "  vColor = c[gl_VertexID];\n"
+            "}\n";
+        fs_src =
+            "#version 300 es\n"
+            "precision mediump float;\n"
+            "in vec3 vColor;\n"
+            "layout(location=0) out vec4 c;\n"
+            "void main() { c = vec4(vColor, 1.0); }\n";
+    } else {
+        vs_src =
+            "#version 330 core\n"
+            "out vec3 vColor;\n"
+            "void main() {\n"
+            "  vec2 p[3] = vec2[3](vec2(-0.75, -0.75), vec2(0.75, -0.75), vec2(0.0, 0.75));\n"
+            "  vec3 c[3] = vec3[3](vec3(1.0, 0.25, 0.35), vec3(0.25, 1.0, 0.35), vec3(0.25, 0.35, 1.0));\n"
+            "  gl_Position = vec4(p[gl_VertexID], 0.0, 1.0);\n"
+            "  vColor = c[gl_VertexID];\n"
+            "}\n";
+        fs_src =
+            "#version 330 core\n"
+            "in vec3 vColor;\n"
+            "out vec4 c;\n"
+            "void main() { c = vec4(vColor, 1.0); }\n";
+    }
 
     GLuint vs = kmp_gles_compile(GL_VERTEX_SHADER, vs_src);
     GLuint fs = kmp_gles_compile(GL_FRAGMENT_SHADER, fs_src);
@@ -169,6 +203,13 @@ void *SDL_kmp_GLESTriangleInit(void)
         return NULL;
     }
     ctx->program = program;
+    /* Desktop core profiles reject draws without a bound VAO; ES 3.0
+     * supports VAOs too, so bind one when the entry points exist. */
+    ctx->has_vao = (kmp_glesGenVertexArrays && kmp_glesBindVertexArray);
+    if (ctx->has_vao) {
+        kmp_glesGenVertexArrays(1, &ctx->vao);
+        kmp_glesBindVertexArray(ctx->vao);
+    }
     return ctx;
 }
 
@@ -180,6 +221,7 @@ bool SDL_kmp_GLESTriangleRender(void *handle, int width, int height)
     kmp_glesClearColor(0.07f, 0.07f, 0.09f, 1.0f);
     kmp_glesClear(GL_COLOR_BUFFER_BIT);
     kmp_glesUseProgram(ctx->program);
+    if (ctx->has_vao) kmp_glesBindVertexArray(ctx->vao);
     kmp_glesDrawArrays(GL_TRIANGLES, 0, 3);
     return true;
 }
@@ -189,5 +231,6 @@ void SDL_kmp_GLESTriangleDestroy(void *handle)
     GLESTriangleCtx *ctx = (GLESTriangleCtx *)handle;
     if (!ctx) return;
     if (kmp_glesDeleteProgram) kmp_glesDeleteProgram(ctx->program);
+    if (ctx->has_vao && kmp_glesDeleteVertexArrays) kmp_glesDeleteVertexArrays(1, &ctx->vao);
     SDL_free(ctx);
 }

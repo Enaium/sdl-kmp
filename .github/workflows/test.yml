@@ -15,8 +15,9 @@ name: Test
 #                  library built via the Android NDK) and the example APKs
 #                  (assembleDebug)
 #   Web x64     -> the wasmJs klib (SDL3 compiled to a standalone Emscripten
-#                  module) and the sdl_renderer browser example (headless,
-#                  dummy drivers, via Node)
+#                  module), the :sdl-kmp:wasm assets jar, and the
+#                  sdl_renderer browser example (headless, dummy drivers,
+#                  via Node)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -204,6 +205,12 @@ jobs:
           ./gradlew --no-daemon --stacktrace
           -Pwasm.emsdk="$HOME/emsdk"
           :sdl-kmp:compileKotlinWasmJs
+
+      - name: Build the wasm assets jar
+        run: >
+          ./gradlew --no-daemon --stacktrace
+          -Pwasm.emsdk="$HOME/emsdk"
+          :sdl-kmp:wasm:jar
 
       - name: Assemble the browser example
         run: >

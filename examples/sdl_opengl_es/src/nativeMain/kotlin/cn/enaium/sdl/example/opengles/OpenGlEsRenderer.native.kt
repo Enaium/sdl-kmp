@@ -52,14 +52,13 @@ actual fun createGpuRenderer(
 
 private fun createOpenGlEsRenderer(window: SDLWindow, width: Int, height: Int): GpuRenderer {
     // Request an OpenGL ES 3.0 context (WebGL2 in the browser; EGL/GLES on
-    // desktop and mobile).
-    SDL.glSetAttribute(SDLGLAttribute.CONTEXT_MAJOR_VERSION, 3)
-    SDL.glSetAttribute(SDLGLAttribute.CONTEXT_MINOR_VERSION, 0)
-    SDL.glSetAttribute(SDLGLAttribute.CONTEXT_PROFILE_MASK, SDLGLProfile.ES)
-
-    val context = SDL.glCreateContext(window.id)
+    // desktop and mobile). macOS has no OpenGL ES / EGL support, so fall
+    // back to a desktop GL 3.3 core context there; the C helper picks the
+    // matching GLSL version from the context profile.
+    val context = createContext(window, es = true)
+        ?: createContext(window, es = false)
+        ?: error("SDL_GL_CreateContext failed: ${SDL.error()}")
     println("GLES context: $context")
-    check(context != 0uL) { "SDL_GL_CreateContext failed: ${SDL.error()}" }
     check(SDL.glMakeCurrent(window.id, context)) { "SDL_GL_MakeCurrent failed: ${SDL.error()}" }
     println("GLES context made current")
     SDL.glSetSwapInterval(1)
@@ -80,4 +79,15 @@ private fun createOpenGlEsRenderer(window: SDLWindow, width: Int, height: Int): 
             ok
         },
     )
+}
+
+private fun createContext(window: SDLWindow, es: Boolean): ULong? {
+    SDL.glSetAttribute(SDLGLAttribute.CONTEXT_MAJOR_VERSION, 3)
+    SDL.glSetAttribute(SDLGLAttribute.CONTEXT_MINOR_VERSION, if (es) 0 else 3)
+    SDL.glSetAttribute(SDLGLAttribute.CONTEXT_PROFILE_MASK, if (es) SDLGLProfile.ES else SDLGLProfile.CORE)
+    val context = SDL.glCreateContext(window.id)
+    if (context == 0uL) {
+        println("${if (es) "GLES" else "GL"} context creation failed: ${SDL.error()}")
+    }
+    return context.takeIf { it != 0uL }
 }

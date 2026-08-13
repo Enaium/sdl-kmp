@@ -477,6 +477,17 @@ val wasmToolchain = File(wasmEmsdk, "upstream/emscripten/cmake/Modules/Platform/
 val wasmSdlDir = projectDir.resolve("wasm")
 val wasmSdlOutput = layout.buildDirectory.dir("wasmSdl").get().asFile
 
+// Emscripten requires Python >= 3.10; the emsdk ships its own interpreter,
+// which may not be on PATH (e.g. macOS ships Python 3.9 as /usr/bin/python3).
+fun wasmEnv(): Map<String, String> {
+    val pythonDir = File(wasmEmsdk, "python").listFiles()?.firstOrNull { it.isDirectory }
+    return if (pythonDir != null) {
+        mapOf("PATH" to "${pythonDir.absolutePath}/bin:${System.getenv("PATH")}")
+    } else {
+        emptyMap()
+    }
+}
+
 tasks.register<Exec>("configureWasmSdl") {
     onlyIf { wasmEmsdk.isNotEmpty() }
     doFirst {
@@ -484,10 +495,15 @@ tasks.register<Exec>("configureWasmSdl") {
         wasmSdlOutput.mkdirs()
     }
     workingDir = File(wasmSdlOutput, "cmake")
+    environment(wasmEnv())
+    // A toolchain file disables the generator's normal make discovery, so the
+    // make program must be passed explicitly (emcmake does the same).
+    val makeProgram = if (hostOs.isWindows) "nmake" else "/usr/bin/make"
     commandLine(
         cmakeExecutable, wasmSdlDir.absolutePath,
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_TOOLCHAIN_FILE=${wasmToolchain.absolutePath}",
+        "-DCMAKE_MAKE_PROGRAM=${makeProgram}",
         "-DSDL_SOURCE_DIR=${sdlDir.absolutePath}",
         "-DSDL3_KMP_OUTPUT_DIR=${wasmSdlOutput.absolutePath}",
     )
@@ -497,6 +513,7 @@ tasks.register<Exec>("buildWasmSdl") {
     onlyIf { wasmEmsdk.isNotEmpty() }
     dependsOn("configureWasmSdl")
     workingDir = File(wasmSdlOutput, "cmake")
+    environment(wasmEnv())
     commandLine(cmakeExecutable, "--build", ".", "--config", "Release")
 }
 
@@ -504,6 +521,7 @@ tasks.register<Exec>("linkWasmSdl") {
     onlyIf { wasmEmsdk.isNotEmpty() }
     dependsOn("buildWasmSdl")
     workingDir = wasmSdlDir
+    environment(wasmEnv())
     doFirst {
         wasmSdlOutput.mkdirs()
         val exports = Regex("sdl_kmp_\\w+(?=\\()")

@@ -123,12 +123,19 @@ All examples live under `examples/` as standalone KMP modules; each provides
 
 ### WebAssembly (wasmJs)
 
-Kotlin/Wasm cannot embed C libraries, so for the `wasmJs` target SDL3 is
-compiled with Emscripten into a standalone module (`sdl_wasm.js` +
-`sdl_wasm.wasm`) exposing the whole sdl-kmp API as flat functions. A JS glue
-layer (`sdl-kmp/wasm/sdl_kmp_glue.js`) instantiates that module and bridges it
+Kotlin/Wasm cannot embed C libraries (and does not merge library resources
+into the web output), so for the `wasmJs` target SDL3 is compiled with
+Emscripten into a standalone module (`sdl_wasm.js` + `sdl_wasm.wasm`)
+exposing the whole sdl-kmp API as flat functions. A JS glue layer
+(`sdl-kmp/wasm/sdl_kmp_glue.js`) instantiates that module and bridges it
 to the Kotlin wasmJs actuals. Building it requires the Emscripten SDK (see
 `gradle.properties`/the `wasm.emsdk` property; the CI installs it).
+
+The module is published separately as `cn.enaium.sdl:sdl-kmp-wasm-assets`
+(a jar with `sdl_wasm.js`, `sdl_wasm.wasm` and `sdl_kmp_glue.js` at its root,
+built by `:sdl-kmp:wasm:jar` from `:sdl-kmp:linkWasmSdl`). A wasmJs
+consumer unpacks that jar into the web root next to the Kotlin/Wasm output
+and loads the glue before running the Kotlin module:
 
 A wasmJs consumer must load the SDL module before running the Kotlin module:
 
