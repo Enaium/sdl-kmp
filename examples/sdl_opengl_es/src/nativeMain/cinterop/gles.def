@@ -1,0 +1,6 @@
+package = sdlkmples
+headers = sdl_kmp_gles.h
+compilerOpts = -std=c11
+
+linkerOpts.osx = -framework OpenGL
+linkerOpts.android = -lEGL -lGLESv2

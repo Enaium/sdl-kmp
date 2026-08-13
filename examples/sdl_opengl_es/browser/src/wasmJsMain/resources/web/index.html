@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>sdl-kmp sdl_opengl_es (wasm)</title>
+    <style>
+        body {
+            margin: 0;
+            background: #121218;
+            color: #ddd;
+            font-family: system-ui, sans-serif;
+            overflow: hidden;
+        }
+        #canvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<script type="module">
+    import { initSdlKmp } from './sdl_kmp_glue.js';
+
+    // 1. Compile and instantiate the Emscripten SDL3 module; the glue exposes
+    //    the sdl_kmp_* JS functions the Kotlin wasmJs actuals call. SDL3's
+    //    Emscripten driver finds the canvas through the #canvas selector.
+    const canvas = document.getElementById('canvas');
+    canvas.width = 800;
+    canvas.height = 600;
+    await initSdlKmp({ canvas });
+
+    // 2. Import the Kotlin/Wasm module; its runtime auto-invokes main().
+    await import('./sdl-kmp-examples-sdl_opengl_es-browser.mjs');
+</script>
+</body>
+</html>

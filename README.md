@@ -109,6 +109,10 @@ All examples live under `examples/` as standalone KMP modules; each provides
   helper builds the pipeline.
 - **`examples/sdl_opengl`** — minimal OpenGL 3.3 core / GLES 3 triangle on
   JVM, macOS, Linux and Windows.
+- **`examples/sdl_opengl_es`** — minimal OpenGL ES 3.0 gradient triangle
+  (the browser-capable GL profile: WebGL2 on wasm). Runs on JVM (LWJGL GLES),
+  macOS, Linux, Windows and Android, with `browser` (wasmJs) and `android`
+  submodules.
 - **`examples/sdl_gpu`** — triangle rendered through the SDL3 GPU API
   (cross-backend: Metal on macOS, Vulkan on Android) entirely from
   `commonMain`. Runs on JVM, macOS, Linux, Windows and Android (with its
@@ -156,9 +160,11 @@ SDL_VIDEO_DRIVER=dummy ./gradlew :examples:sdl_renderer:runDebugExecutableLinuxX
 # GPU examples (macOS: needs a display; Vulkan needs a Vulkan driver)
 ./gradlew :examples:sdl_vulkan:jvmRun
 ./gradlew :examples:sdl_opengl:jvmRun
+./gradlew :examples:sdl_opengl_es:jvmRun
 ./gradlew :examples:sdl_gpu:jvmRun
 ./gradlew :examples:sdl_vulkan:runDebugExecutableLinuxX64
 ./gradlew :examples:sdl_opengl:runDebugExecutableLinuxX64
+./gradlew :examples:sdl_opengl_es:runDebugExecutableLinuxX64
 ./gradlew :examples:sdl_gpu:runDebugExecutableMacosArm64
 ```
 
@@ -177,6 +183,7 @@ submodule so it matches the statically linked SDL3 version), which loads
 # with adb).
 ./gradlew :examples:sdl_renderer:android:assembleDebug
 ./gradlew :examples:sdl_gpu:android:assembleDebug
+./gradlew :examples:sdl_opengl_es:android:assembleDebug
 adb install -r examples/sdl_renderer/android/build/outputs/apk/debug/android-debug.apk
 ```
 

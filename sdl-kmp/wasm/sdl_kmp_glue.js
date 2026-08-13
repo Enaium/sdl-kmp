@@ -865,5 +865,12 @@ export async function initSdlKmp(options = {}) {
     setRet('sdl_kmp_GPU_IsSupported');
     setRet('sdl_kmp_GPU_GetNumDrivers');
 
+    /* ------------------------------------------------------------------
+     * OpenGL ES triangle helper (sdl_opengl_es example)
+     * ------------------------------------------------------------------ */
+    setRet('sdl_kmp_GLES_TriangleInit');
+    setRet('sdl_kmp_GLES_TriangleRender');
+    setRet('sdl_kmp_GLES_TriangleDestroy');
+
     return Module;
 }
