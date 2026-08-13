@@ -45,6 +45,9 @@ val copyWebAssets = tasks.register<Copy>("copyWebAssets") {
     from("src/wasmJsMain/resources/web") {
         include("**")
     }
+    from(layout.projectDirectory) {
+        include("browser-node-test.mjs")
+    }
     from(sdlKmpProject.layout.projectDirectory.dir("wasm")) {
         include("sdl_kmp_glue.js")
     }
