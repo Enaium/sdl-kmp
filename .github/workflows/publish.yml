@@ -14,9 +14,10 @@ name: Publish
 #                    static library; mingwX64 is cross-compiled)
 #   ubuntu-latest -> :sdl-kmp androidNative klibs (arm64/arm32/x64/x86, with
 #                    the embedded static library built via the Android NDK)
-#   ubuntu-latest -> :sdl-kmp:wasm assets (Emscripten-compiled SDL3 module
-#                    sdl_wasm.js/.wasm + sdl_kmp_glue.js; the wasmJs target has
-#                    no cinterop, so the module cannot ride inside the klib)
+#   ubuntu-latest -> :sdl-kmp wasmJs klib + :sdl-kmp:wasm assets
+#                    (Emscripten-compiled SDL3 module sdl_wasm.js/.wasm +
+#                    sdl_kmp_glue.js; the wasmJs target has no cinterop, so
+#                    the module cannot ride inside the klib)
 #
 # The kotlinMultiplatform metadata module (published from macOS) redirects to
 # the per-target klib modules, so all of them must be published before
@@ -186,7 +187,7 @@ jobs:
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
 
   publish-wasm-assets:
-    name: Publish wasm assets (sdl-kmp:wasm)
+    name: Publish wasmJs klib + wasm assets
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -220,14 +221,16 @@ jobs:
           ls -la "$RUNNER_TEMP/signing-key.gpg"
           head -c 16 "$RUNNER_TEMP/signing-key.gpg" | od -c | head -2
 
-      - name: Publish the wasm assets jar
+      - name: Publish the wasmJs klib and the wasm assets jar
         run: >
           ./gradlew --no-daemon --stacktrace
           -Pwasm.emsdk="$HOME/emsdk"
           -Psigning.keyId="${{ secrets.SIGNING_KEY_ID }}"
           -Psigning.secretKeyRingFile="${{ runner.temp }}/signing-key.gpg"
           -Psigning.password="${{ secrets.SIGNING_PASSWORD }}"
+          :sdl-kmp:publishWasmJsPublicationToMavenCentralRepository
           :sdl-kmp:wasm:publishMavenPublicationToMavenCentralRepository
+          --continue
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
