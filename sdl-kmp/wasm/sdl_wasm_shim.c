@@ -1150,9 +1150,13 @@ int sdl_kmp_GL_GetAttribute(int attr, int *out)
     if (!SDL_GL_GetAttribute((SDL_GLAttr)attr, &value)) { *out = value; return 1; }
     return 0;
 }
-int sdl_kmp_GL_CreateContext(int window) { return (int)(intptr_t)SDL_GL_CreateContext((SDL_Window *)(intptr_t)window); }
-int sdl_kmp_GL_MakeCurrent(int window, int ctx) { return SDL_GL_MakeCurrent((SDL_Window *)(intptr_t)window, (SDL_GLContext)(intptr_t)ctx); }
-int sdl_kmp_GL_GetCurrentWindow(void) { return (int)(intptr_t)SDL_GL_GetCurrentWindow(); }
+int sdl_kmp_GL_CreateContext(int window_id) { return (int)(intptr_t)SDL_GL_CreateContext(SDL_GetWindowFromID(window_id)); }
+int sdl_kmp_GL_MakeCurrent(int window_id, int ctx) { return SDL_GL_MakeCurrent(SDL_GetWindowFromID(window_id), (SDL_GLContext)(intptr_t)ctx); }
+int sdl_kmp_GL_GetCurrentWindow(void)
+{
+    SDL_Window *w = SDL_GL_GetCurrentWindow();
+    return w ? (int)SDL_GetWindowID(w) : 0;
+}
 int sdl_kmp_GL_GetCurrentContext(void) { return (int)(intptr_t)SDL_GL_GetCurrentContext(); }
 int sdl_kmp_GL_SetSwapInterval(int interval) { return SDL_GL_SetSwapInterval(interval); }
 int sdl_kmp_GL_GetSwapInterval(int *out)
@@ -1161,7 +1165,7 @@ int sdl_kmp_GL_GetSwapInterval(int *out)
     if (!SDL_GL_GetSwapInterval(&v)) { *out = v; return 1; }
     return 0;
 }
-int sdl_kmp_GL_SwapWindow(int window) { return SDL_GL_SwapWindow((SDL_Window *)(intptr_t)window); }
+int sdl_kmp_GL_SwapWindow(int window_id) { return SDL_GL_SwapWindow(SDL_GetWindowFromID(window_id)); }
 void sdl_kmp_GL_DestroyContext(int ctx) { SDL_GL_DestroyContext((SDL_GLContext)(intptr_t)ctx); }
 
 /* =========================================================================

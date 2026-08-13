@@ -520,7 +520,7 @@ tasks.register<Exec>("linkWasmSdl") {
             "-sEXPORTED_FUNCTIONS=${exports},_malloc,_free",
             "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8,HEAP32,HEAPU32,HEAP16,HEAPU16,HEAPF32,HEAPF64,HEAP8,requestFullscreen",
             "-sALLOW_MEMORY_GROWTH=1", "-sINITIAL_MEMORY=67108864",
-            "-sENVIRONMENT=web,worker,node", "-sFILESYSTEM=1", "--no-entry",
+            "-sENVIRONMENT=web,worker,node", "-sFILESYSTEM=1", "-sMAX_WEBGL_VERSION=2", "--no-entry",
             "--js-library", wasmSdlDir.resolve("emscripten_overrides.js").absolutePath,
         )
     }

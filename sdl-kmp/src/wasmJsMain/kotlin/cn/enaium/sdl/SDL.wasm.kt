@@ -1306,7 +1306,7 @@ actual object SDL {
         sdl_kmp_GL_MakeCurrent(windowId, context.toInt()) != 0
 
     actual val glCurrentWindow: Int?
-        get() = sdl_kmp_GL_GetCurrentWindow().takeIf { it != 0 }?.let { sdl_kmp_GetWindowFromID(it) }
+        get() = sdl_kmp_GL_GetCurrentWindow().takeIf { it != 0 }
 
     actual val glCurrentContext: ULong
         get() = sdl_kmp_GL_GetCurrentContext().toUInt().toULong()
