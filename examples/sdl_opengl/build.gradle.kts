@@ -24,8 +24,23 @@ val hostOs = OperatingSystem.current()
 
 // The demo C code is compiled per native target into a static library and
 // embedded into the cinterop klib, mirroring how sdl-kmp embeds libSDL3.a.
+// Apple targets build on macOS; linuxX64 on Linux hosts; mingwX64 is
+// cross-compiled on Linux hosts with the x86_64-w64-mingw32 toolchain.
+fun hasMingwCrossToolchain(): Boolean {
+    val name = "x86_64-w64-mingw32-gcc"
+    return System.getenv("PATH")?.split(File.pathSeparator).orEmpty().any { dir ->
+        val f = File(dir, name)
+        f.isFile && f.canExecute()
+    }
+}
+
 fun canBuildNativeTarget(targetName: String): Boolean {
-    return hostOs.isMacOsX && targetName.startsWith("macos")
+    return when {
+        hostOs.isMacOsX && targetName == "macosArm64" -> true
+        hostOs.isLinux && targetName == "linuxX64" -> true
+        hostOs.isLinux && targetName == "mingwX64" && hasMingwCrossToolchain() -> true
+        else -> false
+    }
 }
 
 kotlin {
@@ -39,11 +54,25 @@ kotlin {
         binaries.executable()
     }
 
+    linuxX64 {
+        binaries.executable()
+    }
+
+    mingwX64 {
+        binaries.executable()
+    }
+
     sourceSets {
         val nativeMain = create("nativeMain") {
             dependsOn(getByName("commonMain"))
         }
         macosArm64Main {
+            dependsOn(nativeMain)
+        }
+        linuxX64Main {
+            dependsOn(nativeMain)
+        }
+        mingwX64Main {
             dependsOn(nativeMain)
         }
     }
@@ -61,8 +90,10 @@ kotlin {
                     rootProject.file("SDL/include"),
                 )
                 extraOpts(
-                    "-libraryPath", layout.buildDirectory.dir("native/$targetName").get().asFile.absolutePath,
-                    "-staticLibrary", "libsdl_kmp_gl.a",
+                    "-libraryPath",
+                    layout.buildDirectory.dir("native/$targetName").get().asFile.absolutePath,
+                    "-staticLibrary",
+                    "libsdl_kmp_gl.a",
                 )
             }
         }
@@ -135,7 +166,7 @@ fun registerNativeBuildTasks(targetName: String, cmakeFlags: List<String> = empt
 
     tasks.matching {
         it.name.startsWith("cinteropGl") &&
-            it.name.endsWith(targetName.replaceFirstChar { c -> c.uppercase() })
+                it.name.endsWith(targetName.replaceFirstChar { c -> c.uppercase() })
     }.configureEach {
         dependsOn(buildTask)
         inputs.file(outputDir.resolve("libsdl_kmp_gl.a"))
@@ -149,6 +180,19 @@ if (hostOs.isMacOsX) {
             "-DCMAKE_OSX_ARCHITECTURES=arm64",
             "-DCMAKE_SYSTEM_PROCESSOR=arm64",
             "-DCMAKE_OSX_DEPLOYMENT_TARGET=12.0",
+        ),
+    )
+} else if (hostOs.isLinux) {
+    registerNativeBuildTasks("linuxX64")
+    // Cross-compile the MinGW static library with the
+    // x86_64-w64-mingw32 toolchain (canBuildNativeTarget gates on it).
+    registerNativeBuildTasks(
+        "mingwX64",
+        listOf(
+            "-DCMAKE_SYSTEM_NAME=Windows",
+            "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+            "-DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc",
+            "-DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++",
         ),
     )
 }

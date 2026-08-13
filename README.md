@@ -100,16 +100,18 @@ All examples live under `examples/` as standalone KMP modules; each provides
 `commonMain` logic and thin platform entry points (`main()` / `SDL_main`).
 
 - **`examples/sdl_renderer`** — "bouncing box" demo using `SDL_Renderer`
-  (renderer, textures, audio, input). Runs on JVM, macOS, Linux and Android
-  (with its `android` submodule APK).
+  (renderer, textures, audio, input). Runs on JVM, macOS, Linux, Windows
+  (MinGW) and Android (with its `android` submodule APK).
 - **`examples/sdl_vulkan`** — minimal Vulkan triangle (gradient shaders) on
-  JVM and macOS.
+  JVM, macOS, Linux and Windows. On the JVM the LWJGL function table is wired
+  to SDL's `SDL_Vulkan_GetVkGetInstanceProcAddr`; on native targets a small C
+  helper builds the pipeline.
 - **`examples/sdl_opengl`** — minimal OpenGL 3.3 core / GLES 3 triangle on
-  JVM and macOS.
+  JVM, macOS, Linux and Windows.
 - **`examples/sdl_gpu`** — triangle rendered through the SDL3 GPU API
   (cross-backend: Metal on macOS, Vulkan on Android) entirely from
-  `commonMain`. Runs on JVM, macOS and Android (with its `android` submodule
-  APK).
+  `commonMain`. Runs on JVM, macOS, Linux, Windows and Android (with its
+  `android` submodule APK).
 
 ```bash
 # Publish the library to the local Maven repository first (macOS builds all
@@ -128,6 +130,8 @@ SDL_VIDEO_DRIVER=dummy ./gradlew :examples:sdl_renderer:runDebugExecutableLinuxX
 ./gradlew :examples:sdl_vulkan:jvmRun
 ./gradlew :examples:sdl_opengl:jvmRun
 ./gradlew :examples:sdl_gpu:jvmRun
+./gradlew :examples:sdl_vulkan:runDebugExecutableLinuxX64
+./gradlew :examples:sdl_opengl:runDebugExecutableLinuxX64
 ./gradlew :examples:sdl_gpu:runDebugExecutableMacosArm64
 ```
 

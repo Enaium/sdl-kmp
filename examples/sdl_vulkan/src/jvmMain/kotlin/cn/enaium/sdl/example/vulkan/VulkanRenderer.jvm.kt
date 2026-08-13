@@ -364,6 +364,7 @@ private class JvmVulkanRenderer(private val window: SDLWindow) : GpuRenderer {
             val semPtr = stack.mallocLong(2)
             VK10.vkCreateSemaphore(device, sc, null, semPtr)
             imageAvailable = semPtr.get(0)
+            VK10.vkCreateSemaphore(device, sc, null, semPtr.position(1))
             renderFinished = semPtr.get(1)
         }
 

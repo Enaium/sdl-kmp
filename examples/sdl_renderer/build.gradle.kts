@@ -41,6 +41,10 @@ kotlin {
         binaries.executable()
     }
 
+    mingwX64 {
+        binaries.executable()
+    }
+
     // Android native targets build libmain.so with an exported SDL_main entry
     // point; SDLActivity (from the SDL3 AAR) loads and calls it. The SDL3
     // static library is linked in from the sdl-kmp klib; the Kotlin/Native
@@ -83,6 +87,9 @@ kotlin {
             dependsOn(nativeMain)
         }
         linuxX64Main {
+            dependsOn(nativeMain)
+        }
+        mingwX64Main {
             dependsOn(nativeMain)
         }
 
