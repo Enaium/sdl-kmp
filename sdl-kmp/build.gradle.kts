@@ -133,6 +133,8 @@ kotlin {
 
     mingwX64()
 
+    wasmJs()
+
     iosArm64()
     iosX64()
     iosSimulatorArm64()
@@ -248,6 +250,15 @@ kotlin {
             dependencies {
                 implementation(libs.junit.jupiter)
                 runtimeOnly(libs.junit.platform.launcher)
+            }
+        }
+
+        wasmJsMain {
+            dependsOn(getByName("commonMain"))
+            dependencies {
+                // Typed arrays (Int32Array etc.) used to marshal data across the
+                // JS bridge into the Emscripten-compiled SDL3 module.
+                implementation("org.jetbrains.kotlinx:kotlinx-browser:0.5.0")
             }
         }
     }
@@ -444,4 +455,76 @@ mavenPublishing {
             url.set("https://github.com/Enaium/sdl-kmp/issues")
         }
     }
+}
+
+// ==================== wasm: build the SDL3 module for the wasmJs target ====================
+// Kotlin/Wasm has no cinterop and cannot embed C libraries, so SDL3 is compiled
+// to a standalone Emscripten module (sdl_wasm.js + sdl_wasm.wasm) that the
+// wasmJs actuals drive through a JS glue layer (see src/wasmJsMain).
+
+fun emsdkPath(): String {
+    System.getenv("EMSDK")?.takeIf { it.isNotBlank() }?.let { return it }
+    providers.gradleProperty("wasm.emsdk").orNull?.takeIf { it.isNotBlank() }?.let { return it }
+    val home = System.getProperty("user.home")
+    listOf(File(home, "emsdk"), File(home, "sdk/emsdk"))
+        .forEach { if (it.isDirectory()) return it.absolutePath }
+    return ""
+}
+
+val wasmEmsdk = emsdkPath()
+val wasmEmcc = File(wasmEmsdk, "upstream/emscripten/emcc")
+val wasmToolchain = File(wasmEmsdk, "upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake")
+val wasmSdlDir = projectDir.resolve("wasm")
+val wasmSdlOutput = layout.buildDirectory.dir("wasmSdl").get().asFile
+
+tasks.register<Exec>("configureWasmSdl") {
+    onlyIf { wasmEmsdk.isNotEmpty() }
+    doFirst {
+        File(wasmSdlOutput, "cmake").mkdirs()
+        wasmSdlOutput.mkdirs()
+    }
+    workingDir = File(wasmSdlOutput, "cmake")
+    commandLine(
+        cmakeExecutable, wasmSdlDir.absolutePath,
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_TOOLCHAIN_FILE=${wasmToolchain.absolutePath}",
+        "-DSDL_SOURCE_DIR=${sdlDir.absolutePath}",
+        "-DSDL3_KMP_OUTPUT_DIR=${wasmSdlOutput.absolutePath}",
+    )
+}
+
+tasks.register<Exec>("buildWasmSdl") {
+    onlyIf { wasmEmsdk.isNotEmpty() }
+    dependsOn("configureWasmSdl")
+    workingDir = File(wasmSdlOutput, "cmake")
+    commandLine(cmakeExecutable, "--build", ".", "--config", "Release")
+}
+
+tasks.register<Exec>("linkWasmSdl") {
+    onlyIf { wasmEmsdk.isNotEmpty() }
+    dependsOn("buildWasmSdl")
+    workingDir = wasmSdlDir
+    doFirst {
+        wasmSdlOutput.mkdirs()
+        val exports = Regex("sdl_kmp_\\w+(?=\\()")
+            .findAll(wasmSdlDir.resolve("sdl_wasm_shim.c").readText())
+            .map { it.value }
+            .distinct()
+            .joinToString(",") { "_$it" }
+        commandLine(
+            wasmEmcc.absolutePath, wasmSdlDir.resolve("sdl_wasm_shim.c").absolutePath,
+            File(wasmSdlOutput, "libSDL3.a").absolutePath,
+            "-I${sdlDir.absolutePath}/include",
+            "-o", File(wasmSdlOutput, "sdl_wasm.js").absolutePath,
+            "-sMODULARIZE=1", "-sEXPORT_NAME=SDLModule",
+            "-sEXPORTED_FUNCTIONS=${exports},_malloc,_free",
+            "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8,HEAP32,HEAPU32,HEAP16,HEAPU16,HEAPF32,HEAPF64,HEAP8",
+            "-sALLOW_MEMORY_GROWTH=1", "-sINITIAL_MEMORY=67108864",
+            "-sENVIRONMENT=web,worker,node", "-sFILESYSTEM=0", "--no-entry",
+        )
+    }
+    inputs.file(wasmSdlDir.resolve("sdl_wasm_shim.c"))
+    inputs.file(wasmSdlDir.resolve("CMakeLists.txt"))
+    outputs.file(File(wasmSdlOutput, "sdl_wasm.js"))
+    outputs.file(File(wasmSdlOutput, "sdl_wasm.wasm"))
 }

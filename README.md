@@ -16,8 +16,9 @@ Kotlin Multiplatform bindings for [SDL3](https://github.com/libsdl-org/SDL), wit
 | iOS        | `iosArm64`, `iosX64`, `iosSimulatorArm64`           | cinterop + embedded static SDL3    |
 | tvOS       | `tvosArm64`, `tvosSimulatorArm64`                   | cinterop + embedded static SDL3    |
 | Android    | `androidNativeArm64`, `androidNativeArm32`, `androidNativeX64`, `androidNativeX86` | cinterop + embedded static SDL3 (built with the NDK) |
+| Web (browser) | `wasmJs`                                        | SDL3 compiled to a standalone Emscripten module, driven through a JS bridge |
 
-Not supported: JS/WASM (out of scope), watchOS (SDL3 has no watchOS support) and visionOS (Kotlin/Native has no visionOS targets yet).
+Not supported: watchOS (SDL3 has no watchOS support) and visionOS (Kotlin/Native has no visionOS targets yet).
 
 ## Usage
 
@@ -27,7 +28,7 @@ Not supported: JS/WASM (out of scope), watchOS (SDL3 has no watchOS support) and
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("cn.enaium.sdl:sdl-kmp:1.0.4")
+            implementation("cn.enaium.sdl:sdl-kmp:1.0.5")
         }
     }
 }
@@ -112,6 +113,32 @@ All examples live under `examples/` as standalone KMP modules; each provides
   (cross-backend: Metal on macOS, Vulkan on Android) entirely from
   `commonMain`. Runs on JVM, macOS, Linux, Windows and Android (with its
   `android` submodule APK).
+- **`examples/sdl_renderer/browser`** — browser (wasmJs) runner for the
+  `sdl_renderer` demo. SDL3 is compiled to a standalone Emscripten module
+  (`:sdl-kmp:linkWasmSdl`) and loaded before the Kotlin/Wasm module runs.
+
+### WebAssembly (wasmJs)
+
+Kotlin/Wasm cannot embed C libraries, so for the `wasmJs` target SDL3 is
+compiled with Emscripten into a standalone module (`sdl_wasm.js` +
+`sdl_wasm.wasm`) exposing the whole sdl-kmp API as flat functions. A JS glue
+layer (`sdl-kmp/wasm/sdl_kmp_glue.js`) instantiates that module and bridges it
+to the Kotlin wasmJs actuals. Building it requires the Emscripten SDK (see
+`gradle.properties`/the `wasm.emsdk` property; the CI installs it).
+
+A wasmJs consumer must load the SDL module before running the Kotlin module:
+
+```html
+<script type="module">
+    import { initSdlKmp } from './sdl_kmp_glue.js';
+    await initSdlKmp();                                   // instantiate SDL3
+    await import('./index.mjs');                          // Kotlin module; main() auto-runs
+</script>
+```
+
+See `examples/sdl_renderer/browser` for a complete runnable page (its
+`browser-node-test.mjs` runs the demo headlessly in Node with the dummy
+drivers).
 
 ```bash
 # Publish the library to the local Maven repository first (macOS builds all
@@ -172,7 +199,7 @@ install these automatically.
 
 ## GitHub Actions
 
-- `.github/workflows/test.yml` — manual trigger: macOS builds all Apple klibs and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `mingwX64`, and runs the renderer example headless; Android installs the NDK, builds the four `androidNative` klibs and assembles the `sdl_renderer`/`sdl_gpu` APKs.
+- `.github/workflows/test.yml` — manual trigger: macOS builds all Apple klibs and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `mingwX64`, and runs the renderer example headless; Android installs the NDK, builds the four `androidNative` klibs and assembles the `sdl_renderer`/`sdl_gpu` APKs; Web installs the Emscripten SDK, builds the `wasmJs` klib and the browser example.
 - `.github/workflows/publish.yml` — manual workflow that publishes the metadata + JVM + Apple klibs from `macos-14`, the `linuxX64`/`mingwX64` klibs from `ubuntu-latest`, and the four `androidNative` klibs from `ubuntu-latest` (with the NDK) to Maven Central.
 
 Required secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` (base64 GPG keyring), `SIGNING_KEY_ID`, `SIGNING_PASSWORD`.

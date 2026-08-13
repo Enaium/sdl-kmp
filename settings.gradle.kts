@@ -25,6 +25,7 @@ include(":sdl-kmp")
 
 include(":examples:sdl_renderer")
 include(":examples:sdl_renderer:android")
+include(":examples:sdl_renderer:browser")
 include(":examples:sdl_vulkan")
 include(":examples:sdl_opengl")
 include(":examples:sdl_gpu")
