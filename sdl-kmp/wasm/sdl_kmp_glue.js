@@ -37,7 +37,8 @@
  */
 
 export async function initSdlKmp(options = {}) {
-    const { default: loadSdl } = await import('./sdl_wasm.js');
+    const mod = await import('./sdl_wasm.js');
+    const loadSdl = typeof mod.default === 'function' ? mod.default : mod;
     const Module = await loadSdl({
         canvas: options.canvas,
     });

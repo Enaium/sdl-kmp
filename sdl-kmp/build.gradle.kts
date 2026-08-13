@@ -516,11 +516,12 @@ tasks.register<Exec>("linkWasmSdl") {
             File(wasmSdlOutput, "libSDL3.a").absolutePath,
             "-I${sdlDir.absolutePath}/include",
             "-o", File(wasmSdlOutput, "sdl_wasm.js").absolutePath,
-            "-sMODULARIZE=1", "-sEXPORT_NAME=SDLModule",
+            "-sMODULARIZE=1", "-sEXPORT_NAME=SDLModule", "-sEXPORT_ES6=1",
             "-sEXPORTED_FUNCTIONS=${exports},_malloc,_free",
-            "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8,HEAP32,HEAPU32,HEAP16,HEAPU16,HEAPF32,HEAPF64,HEAP8",
+            "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8,HEAP32,HEAPU32,HEAP16,HEAPU16,HEAPF32,HEAPF64,HEAP8,requestFullscreen",
             "-sALLOW_MEMORY_GROWTH=1", "-sINITIAL_MEMORY=67108864",
-            "-sENVIRONMENT=web,worker,node", "-sFILESYSTEM=0", "--no-entry",
+            "-sENVIRONMENT=web,worker,node", "-sFILESYSTEM=1", "--no-entry",
+            "--js-library", wasmSdlDir.resolve("emscripten_overrides.js").absolutePath,
         )
     }
     inputs.file(wasmSdlDir.resolve("sdl_wasm_shim.c"))

@@ -22,10 +22,17 @@
 
 package cn.enaium.sdl.example.renderer
 
+import cn.enaium.sdl.SDL
+import cn.enaium.sdl.SDLInitFlags
 import kotlin.js.ExperimentalJsExport
 
 /**
  * Browser (wasmJs) entry point.
+ *
+ * Browsers cannot repaint a busy main thread, so the shared [BouncingBoxDemo]
+ * frame state machine (used by native/JVM through a blocking [runExample]
+ * loop) is driven here from `requestAnimationFrame` instead — one frame per
+ * browser paint, which is the cooperative model Kotlin/Wasm needs.
  *
  * The host page initializes the Emscripten SDL3 module (sdl_kmp_glue.js)
  * before this module is imported, so the SDL wasmJs actuals' JS globals are
@@ -34,5 +41,26 @@ import kotlin.js.ExperimentalJsExport
 @OptIn(ExperimentalJsExport::class)
 @JsExport
 fun main() {
-    runExample()
+    SDL.setMainReady()
+    SDL.init(SDLInitFlags.VIDEO or SDLInitFlags.EVENTS or SDLInitFlags.AUDIO)
+
+    // Headless (Node) runs have no quit event; stop after a fixed frame count.
+    val headless = SDL.getCurrentVideoDriver() == "dummy"
+    val maxFrames = if (headless) 300 else Int.MAX_VALUE
+
+    val demo = createBouncingBoxDemo(maxFrames) ?: return
+
+    fun frame() {
+        if (demo.frame()) {
+            requestAnimationFrame { frame() }
+        } else {
+            println("ran ${demo.frameCount()} frames")
+            demo.close()
+            SDL.quit()
+        }
+    }
+
+    requestAnimationFrame { frame() }
 }
+
+private external fun requestAnimationFrame(callback: () -> Unit): Int

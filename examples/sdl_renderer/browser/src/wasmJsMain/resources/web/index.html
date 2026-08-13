@@ -11,7 +11,7 @@
             font-family: system-ui, sans-serif;
             overflow: hidden;
         }
-        #sdl-canvas {
+        #canvas {
             width: 100vw;
             height: 100vh;
             display: block;
@@ -19,13 +19,17 @@
     </style>
 </head>
 <body>
-<canvas id="sdl-canvas"></canvas>
+<canvas id="canvas"></canvas>
 <script type="module">
     import { initSdlKmp } from './sdl_kmp_glue.js';
 
     // 1. Compile and instantiate the Emscripten SDL3 module; the glue exposes
-    //    the sdl_kmp_* JS functions the Kotlin wasmJs actuals call.
-    await initSdlKmp({ canvas: document.getElementById('sdl-canvas') });
+    //    the sdl_kmp_* JS functions the Kotlin wasmJs actuals call. SDL3's
+    //    Emscripten driver finds the canvas through the #canvas selector.
+    const canvas = document.getElementById('canvas');
+    canvas.width = 800;
+    canvas.height = 600;
+    await initSdlKmp({ canvas });
 
     // 2. Import the Kotlin/Wasm module; its runtime auto-invokes main().
     await import('./sdl-kmp-examples-sdl_renderer-browser.mjs');

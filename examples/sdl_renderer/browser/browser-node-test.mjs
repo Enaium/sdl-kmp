@@ -20,6 +20,8 @@ globalThis.window = {
     devicePixelRatio: 1,
     location: { href: 'http://localhost/' },
 };
+// The wasmJs entry drives its loop from the global requestAnimationFrame.
+globalThis.requestAnimationFrame = (cb) => setTimeout(cb, 16);
 globalThis.screen = { width: 800, height: 600, availWidth: 800, availHeight: 600 };
 globalThis.document = {
     createElement: (tag) => ({
