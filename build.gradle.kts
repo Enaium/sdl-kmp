@@ -6,5 +6,5 @@ plugins {
 
 allprojects {
     group = "cn.enaium.sdl"
-    version = "1.0.3"
+    version = "1.0.4"
 }

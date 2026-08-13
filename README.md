@@ -27,7 +27,7 @@ Not supported: JS/WASM (out of scope), watchOS (SDL3 has no watchOS support) and
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("cn.enaium.sdl:sdl-kmp:1.0.3")
+            implementation("cn.enaium.sdl:sdl-kmp:1.0.4")
         }
     }
 }
@@ -158,8 +158,17 @@ adb install -r examples/sdl_renderer/android/build/outputs/apk/debug/android-deb
 ```bash
 # Unit + integration tests on the host platform
 ./gradlew :sdl-kmp:jvmTest :sdl-kmp:macosArm64Test   # macOS
-./gradlew :sdl-kmp:jvmTest :sdl-kmp:linuxX64Test     # Linux (needs X11 dev headers)
+./gradlew :sdl-kmp:jvmTest :sdl-kmp:linuxX64Test     # Linux
 ```
+
+Building the Linux native SDL3 library (any `linuxX64` task) requires the
+Wayland, X11 and audio development packages: on Debian/Ubuntu that is
+`libwayland-dev libwayland-bin libxkbcommon-dev libegl-dev libdecor-0-dev`
+plus the X11 `libx*` dev packages and
+`libpipewire-0.3-dev libpulse-dev libasound2-dev` (these also gate the
+PipeWire/Pulse/ALSA audio drivers at build time — without them the published
+klib falls back to X11 and has no audio drivers). The GitHub Actions workflows
+install these automatically.
 
 ## GitHub Actions
 
