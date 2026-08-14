@@ -116,7 +116,7 @@ class BouncingBoxDemo(
                     event.keycode == SDLKeycode.DOWN -> bounceStream?.let { it.gain = (it.gain - 0.1f).coerceAtLeast(0f); println("gain=${it.gain}") }
                     event.keycode == SDLKeycode.RIGHT -> bounceStream?.let { it.frequencyRatio = (it.frequencyRatio + 0.1f).coerceAtMost(2f); println("ratio=${it.frequencyRatio}") }
                     event.keycode == SDLKeycode.LEFT -> bounceStream?.let { it.frequencyRatio = (it.frequencyRatio - 0.1f).coerceAtLeast(0.5f); println("ratio=${it.frequencyRatio}") }
-                    event.keycode == SDLKeycode.s -> {
+                    event.keycode == SDLKeycode.S -> {
                         val shot = renderer.renderReadPixels(null)
                         if (shot != null) {
                             val ok = shot.saveBMP("screenshot.bmp")
@@ -127,7 +127,7 @@ class BouncingBoxDemo(
                         }
                         clipEnabled = !clipEnabled
                     }
-                    event.keycode == SDLKeycode.l -> {
+                    event.keycode == SDLKeycode.L -> {
                         logicalEnabled = !logicalEnabled
                         if (logicalEnabled) {
                             renderer.setLogicalPresentation(800, 600, 2) // LETTERBOX
@@ -136,7 +136,7 @@ class BouncingBoxDemo(
                         }
                         println("logical presentation ${if (logicalEnabled) "enabled (800x600 letterbox)" else "disabled"}")
                     }
-                    event.keycode == SDLKeycode.r -> {
+                    event.keycode == SDLKeycode.R -> {
                         renderer.viewport = null
                         renderer.clipRect = null
                         renderer.scale = SDLFloatPoint(1f, 1f)
