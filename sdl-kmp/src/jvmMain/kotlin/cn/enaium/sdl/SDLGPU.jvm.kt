@@ -46,6 +46,25 @@ import org.lwjgl.sdl.SDL_Rect
 import org.lwjgl.system.MemoryStack
 import org.lwjgl.system.MemoryUtil
 
+/**
+ * Bytes per texel for a [SDLGPUTextureFormat] value (0 for compressed/unknown).
+ *
+ * Stored on [JvmSDLGPUTexture] so [upload] can convert SDL3's
+ * `pixels_per_row` (which counts *pixels*, not bytes) from the caller's
+ * byte-based row stride.
+ */
+private fun bytesPerPixelOf(format: Int): Int = when (format) {
+    SDLGPUTextureFormat.A8_UNORM, SDLGPUTextureFormat.R8_UNORM -> 1
+    SDLGPUTextureFormat.R8G8_UNORM -> 2
+    SDLGPUTextureFormat.R8G8B8A8_UNORM, SDLGPUTextureFormat.B8G8R8A8_UNORM,
+    SDLGPUTextureFormat.B4G4R4A4_UNORM, SDLGPUTextureFormat.B5G5R5A1_UNORM,
+    SDLGPUTextureFormat.R10G10B10A2_UNORM -> 4
+    SDLGPUTextureFormat.R16_UNORM -> 2
+    SDLGPUTextureFormat.R16G16_UNORM -> 4
+    SDLGPUTextureFormat.R16G16B16A16_UNORM -> 8
+    else -> 0
+}
+
 // =========================================================================
 // JVM (LWJGL) GPU handles
 // =========================================================================
@@ -80,7 +99,11 @@ internal class JvmSDLGPUGraphicsPipeline internal constructor(ptr: Long, private
     }
 }
 
-internal class JvmSDLGPUTexture internal constructor(ptr: Long, private val device: JvmSDLGPUDevice) : SDLGPUTexture {
+internal class JvmSDLGPUTexture internal constructor(
+    ptr: Long,
+    private val device: JvmSDLGPUDevice,
+    internal val bytesPerPixel: Int,
+) : SDLGPUTexture {
 
     private var ptrValue: Long = ptr
 
@@ -89,6 +112,9 @@ internal class JvmSDLGPUTexture internal constructor(ptr: Long, private val devi
 
     override fun upload(data: ByteArray, bytesPerRow: Int, x: Int, y: Int, width: Int, height: Int): Boolean =
         device.uploadToTexture(this, data, bytesPerRow, x, y, width, height)
+
+    override fun download(width: Int, height: Int): ByteArray? =
+        device.downloadFromTexture(this, width, height)
 
     override fun close() {
         val texture = ptrValue
@@ -241,6 +267,19 @@ internal class JvmSDLGPURenderPass internal constructor(ptr: Long) : SDLGPURende
         }
     }
 
+    override fun bindGraphicsTextureSamplers(slot: Int, vararg bindings: Pair<SDLGPUTexture, SDLGPUSampler>) {
+        if (bindings.isEmpty()) return
+        SDL_GPUTextureSamplerBinding.calloc(bindings.size).use { arr ->
+            for (i in bindings.indices) {
+                val (texture, sampler) = bindings[i]
+                arr.get(i)
+                    .texture((texture as? JvmSDLGPUTexture)?.ptr ?: throw IllegalArgumentException("texture is not a JVM SDL GPU texture"))
+                    .sampler((sampler as? JvmSDLGPUSampler)?.ptr ?: throw IllegalArgumentException("sampler is not a JVM SDL GPU sampler"))
+            }
+            SDLGPU.SDL_BindGPUFragmentSamplers(check(), slot, arr)
+        }
+    }
+
     override fun pushVertexUniformData(slot: Int, data: ByteArray) {
         val buffer = MemoryUtil.memAlloc(data.size)
         try {
@@ -374,7 +413,7 @@ internal class JvmSDLGPUDevice internal constructor(ptr: Long) : SDLGPUDevice {
             return null
         }
         SDLGPUWindowTexture(
-            texture = texture.get(0).takeIf { it != 0L }?.let { JvmSDLGPUTexture(it, this@JvmSDLGPUDevice) },
+            texture = texture.get(0).takeIf { it != 0L }?.let { JvmSDLGPUTexture(it, this@JvmSDLGPUDevice, 0) },
             srcRect = SDLRect(0, 0, width.get(0), height.get(0)),
         )
     }
@@ -388,7 +427,7 @@ internal class JvmSDLGPUDevice internal constructor(ptr: Long) : SDLGPUDevice {
             return null
         }
         SDLGPUWindowTexture(
-            texture = texture.get(0).takeIf { it != 0L }?.let { JvmSDLGPUTexture(it, this@JvmSDLGPUDevice) },
+            texture = texture.get(0).takeIf { it != 0L }?.let { JvmSDLGPUTexture(it, this@JvmSDLGPUDevice, 0) },
             srcRect = SDLRect(0, 0, width.get(0), height.get(0)),
         )
     }
@@ -407,7 +446,7 @@ internal class JvmSDLGPUDevice internal constructor(ptr: Long) : SDLGPUDevice {
             if (texture == 0L) {
                 null
             } else {
-                JvmSDLGPUTexture(texture, this@JvmSDLGPUDevice)
+                JvmSDLGPUTexture(texture, this@JvmSDLGPUDevice, bytesPerPixelOf(createInfo.format))
             }
         }
 
@@ -528,7 +567,11 @@ internal class JvmSDLGPUDevice internal constructor(ptr: Long) : SDLGPUDevice {
                         val blend = t.blendState
                         cd.get(i).format(t.format)
                         cd.get(i).blend_state { b ->
-                            b.src_color_blendfactor(blend.srcColorBlendFactor)
+                            // SDL3 requires enable_blend=true for the factors to
+                            // take effect; without it output is opaque overwrite,
+                            // which makes imgui glyphs render as thick blocks.
+                            b.enable_blend(true)
+                                .src_color_blendfactor(blend.srcColorBlendFactor)
                                 .dst_color_blendfactor(blend.dstColorBlendFactor)
                                 .color_blend_op(blend.colorBlendOp)
                                 .src_alpha_blendfactor(blend.srcAlphaBlendFactor)
@@ -650,7 +693,9 @@ internal class JvmSDLGPUDevice internal constructor(ptr: Long) : SDLGPUDevice {
                 val cmd = SDLGPU.SDL_AcquireGPUCommandBuffer(check()) ?: return false
                 val pass = SDLGPU.SDL_BeginGPUCopyPass(cmd)
                 SDL_GPUTextureTransferInfo.calloc().use { src ->
-                    src.transfer_buffer(transfer).offset(0).pixels_per_row(bytesPerRow)
+                    // SDL3's pixels_per_row is in pixels, not bytes.
+                    val bpp = if (texture.bytesPerPixel > 0) texture.bytesPerPixel else 1
+                    src.transfer_buffer(transfer).offset(0).pixels_per_row(bytesPerRow / bpp)
                     SDL_GPUTextureRegion.calloc().use { region ->
                         region.texture(texture.ptr).mip_level(0).layer(0)
                             .x(x).y(y).z(0).w(width).h(height).d(1)
@@ -660,6 +705,49 @@ internal class JvmSDLGPUDevice internal constructor(ptr: Long) : SDLGPUDevice {
                 SDLGPU.SDL_EndGPUCopyPass(pass)
                 SDLGPU.SDL_SubmitGPUCommandBuffer(cmd)
                 return true
+            } finally {
+                SDLGPU.SDL_ReleaseGPUTransferBuffer(check(), transfer)
+            }
+        }
+    }
+
+    /** Copies the texture's [width]x[height] region back to the CPU (RGBA8), blocking on a fence. */
+    internal fun downloadFromTexture(texture: JvmSDLGPUTexture, width: Int, height: Int): ByteArray? {
+        val size = width * height * 4
+        val result = ByteArray(size)
+        SDL_GPUTransferBufferCreateInfo.calloc().use { info ->
+            info.usage(SDLGPU.SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD).size(size)
+            val transfer = SDLGPU.SDL_CreateGPUTransferBuffer(check(), info) ?: return null
+            try {
+                val cmd = SDLGPU.SDL_AcquireGPUCommandBuffer(check()) ?: return null
+                val pass = SDLGPU.SDL_BeginGPUCopyPass(cmd)
+                SDL_GPUTextureTransferInfo.calloc().use { dst ->
+                    dst.transfer_buffer(transfer).offset(0).pixels_per_row(width)
+                    SDL_GPUTextureRegion.calloc().use { region ->
+                        region.texture(texture.ptr).mip_level(0).layer(0)
+                            .x(0).y(0).z(0).w(width).h(height).d(1)
+                        SDLGPU.SDL_DownloadFromGPUTexture(pass, region, dst)
+                    }
+                }
+                SDLGPU.SDL_EndGPUCopyPass(pass)
+                val fence = SDLGPU.SDL_SubmitGPUCommandBufferAndAcquireFence(cmd)
+                if (fence == 0L) return null
+                try {
+                    MemoryStack.stackPush().use { stack ->
+                        val fences = stack.mallocPointer(1)
+                        fences.put(0, fence)
+                        SDLGPU.SDL_WaitForGPUFences(check(), true, fences)
+                    }
+                    val mapped = SDLGPU.SDL_MapGPUTransferBuffer(check(), transfer, false, size.toLong()) ?: return null
+                    try {
+                        mapped.get(result)
+                    } finally {
+                        SDLGPU.SDL_UnmapGPUTransferBuffer(check(), transfer)
+                    }
+                } finally {
+                    SDLGPU.SDL_ReleaseGPUFence(check(), fence)
+                }
+                return result
             } finally {
                 SDLGPU.SDL_ReleaseGPUTransferBuffer(check(), transfer)
             }

@@ -60,8 +60,12 @@ import org.lwjgl.sdl.SDLDialog
 import org.lwjgl.system.JNI
 import org.lwjgl.system.MemoryStack
 import org.lwjgl.system.MemoryUtil
+import java.nio.ByteOrder
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+
+/** The host byte order via the JVM's native order. */
+internal actual val hostIsLittleEndian: Boolean = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN
 
 // =========================================================================
 // JVM callback adapters (event watch / file dialogs)

@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, kotlin.experimental.ExperimentalNativeApi::class)
 
 package cn.enaium.sdl
 
@@ -34,6 +34,9 @@ import cnames.structs.SDL_Window
 
 
 private fun CPointer<ByteVar>.toKStringOrNull(): String? = toKString()
+
+/** The host byte order via Kotlin/Native's API. */
+internal actual val hostIsLittleEndian: Boolean = kotlin.native.Platform.isLittleEndian
 
 // =========================================================================
 // Native (cinterop) window

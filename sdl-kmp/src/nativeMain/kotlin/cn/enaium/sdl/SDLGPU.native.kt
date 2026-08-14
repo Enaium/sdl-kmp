@@ -153,7 +153,11 @@ internal class NativeSDLGPUGraphicsPipeline internal constructor(raw: CPointer<S
     }
 }
 
-internal class NativeSDLGPUTexture internal constructor(raw: CPointer<SDL_GPUTexture>?, private val device: NativeSDLGPUDevice) : SDLGPUTexture {
+internal class NativeSDLGPUTexture internal constructor(
+    raw: CPointer<SDL_GPUTexture>?,
+    private val device: NativeSDLGPUDevice,
+    internal val bytesPerPixel: Int,
+) : SDLGPUTexture {
 
     internal var raw: CPointer<SDL_GPUTexture>? = raw
 
@@ -163,6 +167,11 @@ internal class NativeSDLGPUTexture internal constructor(raw: CPointer<SDL_GPUTex
     override fun upload(data: ByteArray, bytesPerRow: Int, x: Int, y: Int, width: Int, height: Int): Boolean {
         val texture = checkTexture() ?: return false
         return device.uploadToTexture(this, data, bytesPerRow, x, y, width, height)
+    }
+
+    override fun download(width: Int, height: Int): ByteArray? {
+        val tex = checkTexture() ?: return null
+        return device.downloadFromTexture(this, width, height)
     }
 
     private fun checkTexture(): CPointer<SDL_GPUTexture>? = raw
@@ -330,6 +339,19 @@ internal class NativeSDLGPURenderPass internal constructor(
         SDL_BindGPUFragmentSamplers(check(), slot.toUInt(), arr, textures.size.toUInt())
     }
 
+    override fun bindGraphicsTextureSamplers(slot: Int, vararg bindings: Pair<SDLGPUTexture, SDLGPUSampler>) = memScoped {
+        if (bindings.isEmpty()) return
+        val arr = allocArray<SDL_GPUTextureSamplerBinding>(bindings.size)
+        for (i in bindings.indices) {
+            val (texture, sampler) = bindings[i]
+            arr[i].texture = (texture as? NativeSDLGPUTexture)?.raw
+                ?: throw IllegalArgumentException("texture is not a native SDL GPU texture")
+            arr[i].sampler = (sampler as? NativeSDLGPUSampler)?.raw
+                ?: throw IllegalArgumentException("sampler is not a native SDL GPU sampler")
+        }
+        SDL_BindGPUFragmentSamplers(check(), slot.toUInt(), arr, bindings.size.toUInt())
+    }
+
     override fun pushVertexUniformData(slot: Int, data: ByteArray) {
         val cmd = commandBuffer ?: throw IllegalStateException("no command buffer for render pass")
         data.usePinned { pinned ->
@@ -458,7 +480,7 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
         }
         val tex = texture.value
         SDLGPUWindowTexture(
-            texture = tex?.let { NativeSDLGPUTexture(it, this@NativeSDLGPUDevice) },
+            texture = tex?.let { NativeSDLGPUTexture(it, this@NativeSDLGPUDevice, 0) },
             srcRect = SDLRect(0, 0, width.value.toInt(), height.value.toInt()),
         )
     }
@@ -476,7 +498,7 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
         }
         val tex = texture.value
         SDLGPUWindowTexture(
-            texture = tex?.let { NativeSDLGPUTexture(it, this@NativeSDLGPUDevice) },
+            texture = tex?.let { NativeSDLGPUTexture(it, this@NativeSDLGPUDevice, 0) },
             srcRect = SDLRect(0, 0, width.value.toInt(), height.value.toInt()),
         )
     }
@@ -492,7 +514,7 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
         info.num_levels = createInfo.numLevels.toUInt()
         info.sample_count = gpuSampleCountOf(createInfo.sampleCount)
         val texture = SDL_CreateGPUTexture(check(), info.ptr) ?: return null
-        NativeSDLGPUTexture(texture, this@NativeSDLGPUDevice)
+        NativeSDLGPUTexture(texture, this@NativeSDLGPUDevice, bytesPerPixelOf(createInfo.format))
     }
 
     override fun createBuffer(createInfo: SDLGPUBufferCreateInfo): SDLGPUBuffer? = memScoped {
@@ -718,7 +740,9 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
             val src = alloc<SDL_GPUTextureTransferInfo>()
             src.transfer_buffer = buffer
             src.offset = 0u
-            src.pixels_per_row = bytesPerRow.toUInt()
+            // SDL3's pixels_per_row is in pixels, not bytes.
+            val bpp = if (texture.bytesPerPixel > 0) texture.bytesPerPixel else 1
+            src.pixels_per_row = (bytesPerRow / bpp).toUInt()
             val region = alloc<SDL_GPUTextureRegion>()
             region.texture = tex
             region.mip_level = 0u
@@ -738,6 +762,58 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
         }
     }
 
+    /** Copies the texture's [width]x[height] region back to the CPU (RGBA8), blocking on a fence. */
+    internal fun downloadFromTexture(texture: NativeSDLGPUTexture, width: Int, height: Int): ByteArray? {
+        val tex = texture.raw ?: return null
+        val size = width * height * 4
+        val result = ByteArray(size)
+        return memScoped {
+            val transfer = alloc<SDL_GPUTransferBufferCreateInfo>()
+            transfer.usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD
+            transfer.size = size.toUInt()
+            val buffer = SDL_CreateGPUTransferBuffer(check(), transfer.ptr) ?: return null
+            try {
+                val cmd = SDL_AcquireGPUCommandBuffer(check()) ?: return null
+                val pass = SDL_BeginGPUCopyPass(cmd)
+                val dst = alloc<SDL_GPUTextureTransferInfo>()
+                dst.transfer_buffer = buffer
+                dst.offset = 0u
+                dst.pixels_per_row = width.toUInt()
+                val region = alloc<SDL_GPUTextureRegion>()
+                region.texture = tex
+                region.mip_level = 0u
+                region.layer = 0u
+                region.x = 0u
+                region.y = 0u
+                region.z = 0u
+                region.w = width.toUInt()
+                region.h = height.toUInt()
+                region.d = 1u
+                SDL_DownloadFromGPUTexture(pass, region.ptr, dst.ptr)
+                SDL_EndGPUCopyPass(pass)
+                val fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd)
+                if (fence == null) {
+                    SDL_ReleaseGPUTransferBuffer(check(), buffer)
+                    return null
+                }
+                try {
+                    val fences = allocArray<CPointerVarOf<CPointer<SDL_GPUFence>>>(1)
+                    fences[0] = fence
+                    SDL_WaitForGPUFences(check(), true, fences, 1u)
+                    val mapped = SDL_MapGPUTransferBuffer(check(), buffer, false) ?: return null
+                    val src = mapped.reinterpret<ByteVar>()
+                    for (i in 0 until size) result[i] = src[i]
+                    SDL_UnmapGPUTransferBuffer(check(), buffer)
+                } finally {
+                    SDL_ReleaseGPUFence(check(), fence)
+                }
+                result
+            } finally {
+                SDL_ReleaseGPUTransferBuffer(check(), buffer)
+            }
+        }
+    }
+
     override fun close() {
         val device = raw ?: return
         raw = null
@@ -747,6 +823,25 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
 
 private fun gpuTextureFormatOf(value: Int): SDL_GPUTextureFormat =
     SDL_GPUTextureFormat.entries.firstOrNull { it.value.toInt() == value } ?: SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM
+
+/**
+ * Bytes per texel for a [SDLGPUTextureFormat] value (0 for compressed/unknown).
+ *
+ * Stored on [NativeSDLGPUTexture] so [upload] can convert SDL3's
+ * `pixels_per_row` (which counts *pixels*, not bytes) from the caller's
+ * byte-based row stride.
+ */
+private fun bytesPerPixelOf(format: Int): Int = when (format) {
+    SDLGPUTextureFormat.A8_UNORM, SDLGPUTextureFormat.R8_UNORM -> 1
+    SDLGPUTextureFormat.R8G8_UNORM -> 2
+    SDLGPUTextureFormat.R8G8B8A8_UNORM, SDLGPUTextureFormat.B8G8R8A8_UNORM,
+    SDLGPUTextureFormat.B4G4R4A4_UNORM, SDLGPUTextureFormat.B5G5R5A1_UNORM,
+    SDLGPUTextureFormat.R10G10B10A2_UNORM -> 4
+    SDLGPUTextureFormat.R16_UNORM -> 2
+    SDLGPUTextureFormat.R16G16_UNORM -> 4
+    SDLGPUTextureFormat.R16G16B16A16_UNORM -> 8
+    else -> 0
+}
 
 private fun gpuSampleCountOf(value: Int): SDL_GPUSampleCount = when (value) {
     2 -> SDL_GPUSampleCount.SDL_GPU_SAMPLECOUNT_2

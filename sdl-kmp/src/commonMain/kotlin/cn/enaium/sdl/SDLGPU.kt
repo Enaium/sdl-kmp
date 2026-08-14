@@ -76,6 +76,27 @@ object SDLGPUTextureType {
     const val CUBE_ARRAY = 4
 }
 
+/**
+ * Texture formats (values match SDL3's SDL_GPUTextureFormat).
+ *
+ * Exposed so callers can create textures without hand-coding the raw enum
+ * values (e.g. imgui-kmp's font atlas uses [R8G8B8A8_UNORM]).
+ */
+object SDLGPUTextureFormat {
+    const val A8_UNORM = 1
+    const val R8_UNORM = 2
+    const val R8G8_UNORM = 3
+    const val R8G8B8A8_UNORM = 4
+    const val R16_UNORM = 5
+    const val R16G16_UNORM = 6
+    const val R16G16B16A16_UNORM = 7
+    const val R10G10B10A2_UNORM = 8
+    const val B5G6R5_UNORM = 9
+    const val B5G5R5A1_UNORM = 10
+    const val B4G4R4A4_UNORM = 11
+    const val B8G8R8A8_UNORM = 12
+}
+
 /** Texture usage flags (values match SDL3's SDL_GPUTextureUsageFlags). */
 object SDLGPUTextureUsage {
     const val SAMPLE = 1 shl 0
@@ -98,7 +119,13 @@ object SDLGPUBufferUsage {
     const val GRAPHICS_STORAGE_WRITE = 1 shl 6
 }
 
-/** Vertex element formats (values match SDL3's SDL_GPUVertexElementFormat). */
+/**
+ * Vertex element formats (values match SDL3's SDL_GPUVertexElementFormat).
+ *
+ * The values must match SDL3 exactly — SDL3 has no single-component BYTE,
+ * UBYTE, BYTE_NORM or UBYTE_NORM entries (only the 2/4-component variants),
+ * so the numbering here is dense and every entry maps 1:1 to the C enum.
+ */
 object SDLGPUVertexElementFormat {
     const val INVALID = 0
     const val INT = 1
@@ -113,27 +140,24 @@ object SDLGPUVertexElementFormat {
     const val FLOAT2 = 10
     const val FLOAT3 = 11
     const val FLOAT4 = 12
-    const val BYTE = 13
-    const val BYTE2 = 14
-    const val BYTE4 = 15
-    const val UBYTE = 16
-    const val UBYTE2 = 17
-    const val UBYTE4 = 18
-    const val BYTE_NORM = 19
-    const val BYTE2_NORM = 20
-    const val BYTE4_NORM = 21
-    const val UBYTE_NORM = 22
-    const val UBYTE2_NORM = 23
-    const val UBYTE4_NORM = 24
-    const val SHORT = 25
-    const val SHORT2 = 26
-    const val SHORT4 = 27
-    const val USHORT = 28
-    const val USHORT2 = 29
-    const val USHORT4 = 30
-    const val HALF = 31
-    const val HALF2 = 32
-    const val HALF4 = 33
+    const val BYTE2 = 13
+    const val BYTE4 = 14
+    const val UBYTE2 = 15
+    const val UBYTE4 = 16
+    const val BYTE2_NORM = 17
+    const val BYTE4_NORM = 18
+    const val UBYTE2_NORM = 19
+    const val UBYTE4_NORM = 20
+    const val SHORT2 = 21
+    const val SHORT4 = 22
+    const val USHORT2 = 23
+    const val USHORT4 = 24
+    const val SHORT2_NORM = 25
+    const val SHORT4_NORM = 26
+    const val USHORT2_NORM = 27
+    const val USHORT4_NORM = 28
+    const val HALF2 = 29
+    const val HALF4 = 30
 }
 
 /** Vertex input rates (values match SDL3's SDL_GPUVertexInputRate). */
@@ -380,6 +404,12 @@ interface SDLGPUTexture : AutoCloseable {
     /** Uploads [data] into a subrectangle of the texture. */
     fun upload(data: ByteArray, bytesPerRow: Int, x: Int, y: Int, width: Int, height: Int): Boolean
 
+    /**
+     * Reads back [width]x[height] pixels starting at (0,0) into an RGBA8
+     * ByteArray, or null on failure. Blocking; intended for debugging.
+     */
+    fun download(width: Int, height: Int): ByteArray?
+
     override fun close()
 }
 
@@ -423,6 +453,15 @@ interface SDLGPURenderPass : AutoCloseable {
     fun bindIndexBuffer(buffer: SDLGPUBuffer, indexSize: Int = SDLGPUIndexElementSize.UINT16)
     fun bindGraphicsSamplers(slot: Int, vararg samplers: SDLGPUSampler)
     fun bindGraphicsTextures(slot: Int, vararg textures: SDLGPUTexture)
+
+    /**
+     * Binds fragment [slot] to the given texture/sampler pairs in a single
+     * `SDL_BindGPUFragmentSamplers` call. Unlike calling
+     * [bindGraphicsSamplers] and [bindGraphicsTextures] separately, each
+     * `SDL_GPUTextureSamplerBinding` is fully populated (both the texture
+     * and the sampler), which the Vulkan backend requires.
+     */
+    fun bindGraphicsTextureSamplers(slot: Int, vararg bindings: Pair<SDLGPUTexture, SDLGPUSampler>)
     fun pushVertexUniformData(slot: Int, data: ByteArray)
     fun drawPrimitives(vertexCount: Int, instanceCount: Int = 1, firstVertex: Int = 0, firstInstance: Int = 0)
     fun drawIndexedPrimitives(indexCount: Int, instanceCount: Int = 1, firstIndex: Int = 0, vertexOffset: Int = 0, firstInstance: Int = 0)

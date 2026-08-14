@@ -39,6 +39,9 @@ import kotlin.js.JsString
 import kotlin.js.toJsArray
 import kotlin.js.toJsString
 
+/** WebAssembly is always little-endian. */
+internal actual val hostIsLittleEndian: Boolean = true
+
 private fun r32(index: Int): Int = sdlKmpResultI32Get(index)
 
 private fun rf32(index: Int): Float = sdlKmpResultF32Get(index)

@@ -106,6 +106,7 @@ object SDLMouseWheelDirection {
 
 /** Common key codes (values match SDL3's SDLK_*). */
 object SDLKeycode {
+    const val UNKNOWN = 0x00000000
     const val RETURN = 0x0d
     const val ESCAPE = 0x1b
     const val BACKSPACE = 0x08
@@ -113,37 +114,134 @@ object SDLKeycode {
     const val SPACE = 0x20
     const val DELETE = 0x7f
 
-    const val a = 0x61
-    const val b = 0x62
-    const val c = 0x63
-    const val d = 0x64
-    const val e = 0x65
-    const val f = 0x66
-    const val g = 0x67
-    const val h = 0x68
-    const val i = 0x69
-    const val j = 0x6a
-    const val k = 0x6b
-    const val l = 0x6c
-    const val m = 0x6d
-    const val n = 0x6e
-    const val o = 0x6f
-    const val p = 0x70
-    const val q = 0x71
-    const val r = 0x72
-    const val s = 0x73
-    const val t = 0x74
-    const val u = 0x75
-    const val v = 0x76
-    const val w = 0x77
-    const val x = 0x78
-    const val y = 0x79
-    const val z = 0x7a
+    // Printable characters (ASCII values, layout-independent).
+    const val EXCLAIM = 0x21
+    const val DBLAPOSTROPHE = 0x22
+    const val HASH = 0x23
+    const val DOLLAR = 0x24
+    const val PERCENT = 0x25
+    const val AMPERSAND = 0x26
+    const val APOSTROPHE = 0x27
+    const val LEFTPAREN = 0x28
+    const val RIGHTPAREN = 0x29
+    const val ASTERISK = 0x2a
+    const val PLUS = 0x2b
+    const val COMMA = 0x2c
+    const val MINUS = 0x2d
+    const val PERIOD = 0x2e
+    const val SLASH = 0x2f
+    const val KEY_0_START = 0x30
+    const val KEY_0_END = 0x39
+    const val COLON = 0x3a
+    const val SEMICOLON = 0x3b
+    const val LESS = 0x3c
+    const val EQUALS = 0x3d
+    const val GREATER = 0x3e
+    const val QUESTION = 0x3f
+    const val AT = 0x40
+    const val LEFTBRACKET = 0x5b
+    const val BACKSLASH = 0x5c
+    const val RIGHTBRACKET = 0x5d
+    const val CARET = 0x5e
+    const val UNDERSCORE = 0x5f
+    const val GRAVE = 0x60
+    const val LEFTBRACE = 0x7b
+    const val PIPE = 0x7c
+    const val RIGHTBRACE = 0x7d
+    const val TILDE = 0x7e
 
-    const val LEFT = 0x40000050
+    const val A = 0x61
+    const val B = 0x62
+    const val C = 0x63
+    const val D = 0x64
+    const val E = 0x65
+    const val F = 0x66
+    const val G = 0x67
+    const val H = 0x68
+    const val I = 0x69
+    const val J = 0x6a
+    const val K = 0x6b
+    const val L = 0x6c
+    const val M = 0x6d
+    const val N = 0x6e
+    const val O = 0x6f
+    const val P = 0x70
+    const val Q = 0x71
+    const val R = 0x72
+    const val S = 0x73
+    const val T = 0x74
+    const val U = 0x75
+    const val V = 0x76
+    const val W = 0x77
+    const val X = 0x78
+    const val Y = 0x79
+    const val Z = 0x7a
+
+    // Non-printable keys (SDLK_EXTENDED_MASK | scancode).
+    const val CAPSLOCK = 0x40000039
+    const val F1 = 0x4000003a
+    const val F2 = 0x4000003b
+    const val F3 = 0x4000003c
+    const val F4 = 0x4000003d
+    const val F5 = 0x4000003e
+    const val F6 = 0x4000003f
+    const val F7 = 0x40000040
+    const val F8 = 0x40000041
+    const val F9 = 0x40000042
+    const val F10 = 0x40000043
+    const val F11 = 0x40000044
+    const val F12 = 0x40000045
+    const val PRINTSCREEN = 0x40000046
+    const val SCROLLLOCK = 0x40000047
+    const val PAUSE = 0x40000048
+    const val INSERT = 0x40000049
+    const val HOME = 0x4000004a
+    const val PAGEUP = 0x4000004b
+    const val END = 0x4000004d
+    const val PAGEDOWN = 0x4000004e
     const val RIGHT = 0x4000004f
-    const val UP = 0x40000052
+    const val LEFT = 0x40000050
     const val DOWN = 0x40000051
+    const val UP = 0x40000052
+    const val NUMLOCKCLEAR = 0x40000053
+    const val KP_DIVIDE = 0x40000054
+    const val KP_MULTIPLY = 0x40000055
+    const val KP_MINUS = 0x40000056
+    const val KP_PLUS = 0x40000057
+    const val KP_ENTER = 0x40000058
+    const val KP_1 = 0x40000059
+    const val KP_2 = 0x4000005a
+    const val KP_3 = 0x4000005b
+    const val KP_4 = 0x4000005c
+    const val KP_5 = 0x4000005d
+    const val KP_6 = 0x4000005e
+    const val KP_7 = 0x4000005f
+    const val KP_8 = 0x40000060
+    const val KP_9 = 0x40000061
+    const val KP_0 = 0x40000062
+    const val KP_PERIOD = 0x40000063
+    const val APPLICATION = 0x40000065
+    const val KP_EQUALS = 0x40000067
+    const val F13 = 0x40000068
+    const val F14 = 0x40000069
+    const val F15 = 0x4000006a
+    const val F16 = 0x4000006b
+    const val F17 = 0x4000006c
+    const val F18 = 0x4000006d
+    const val F19 = 0x4000006e
+    const val F20 = 0x4000006f
+    const val F21 = 0x40000070
+    const val F22 = 0x40000071
+    const val F23 = 0x40000072
+    const val F24 = 0x40000073
+    const val LCTRL = 0x400000e0
+    const val LSHIFT = 0x400000e1
+    const val LALT = 0x400000e2
+    const val LGUI = 0x400000e3
+    const val RCTRL = 0x400000e4
+    const val RSHIFT = 0x400000e5
+    const val RALT = 0x400000e6
+    const val RGUI = 0x400000e7
 }
 
 /** Window event types (values match SDL3's SDL_EVENT_WINDOW_*). */
@@ -231,6 +329,9 @@ object SDLScaleMode {
     const val LINEAR = 1
 }
 
+/** Whether the host is little-endian (used to pick SDL's *32 pixel format aliases). */
+internal expect val hostIsLittleEndian: Boolean
+
 /** Pixel formats (values match SDL3's SDL_PixelFormat). */
 object SDLPixelFormat {
     const val UNKNOWN = 0
@@ -240,10 +341,13 @@ object SDLPixelFormat {
     const val RGBA8888 = 0x16462004
     const val ABGR8888 = 0x16762004
     const val BGRA8888 = 0x16862004
-    const val RGBA32 = RGBA8888
-    const val ARGB32 = ARGB8888
-    const val BGRA32 = BGRA8888
-    const val ABGR32 = ABGR8888
+    // SDL3's *32 aliases map to a format whose in-memory byte order is R,G,B,A,
+    // which depends on the host endianness (SDL_BYTEORDER):
+    //   little-endian: RGBA32 = ABGR8888,  big-endian: RGBA32 = RGBA8888
+    val RGBA32: Int get() = if (hostIsLittleEndian) ABGR8888 else RGBA8888
+    val ARGB32: Int get() = if (hostIsLittleEndian) BGRA8888 else ARGB8888
+    val BGRA32: Int get() = if (hostIsLittleEndian) ARGB8888 else BGRA8888
+    val ABGR32: Int get() = if (hostIsLittleEndian) RGBA8888 else ABGR8888
 }
 
 // =========================================================================
@@ -260,6 +364,11 @@ object SDLAudioFormat {
     const val S32BE = 0x9020
     const val F32LE = 0x8120
     const val F32BE = 0x9120
+    // SDL3 defines these aliases to the host byte order (SDL_AUDIO_S16 =
+    // S16LE on little-endian, S16BE on big-endian, etc.).
+    val S16: Int get() = if (hostIsLittleEndian) S16LE else S16BE
+    val S32: Int get() = if (hostIsLittleEndian) S32LE else S32BE
+    val F32: Int get() = if (hostIsLittleEndian) F32LE else F32BE
 }
 
 /** Audio device IDs (values match SDL3's SDL_AudioDeviceID). */
@@ -270,7 +379,7 @@ object SDLAudioDeviceID {
 
 /** Audio device description (matches SDL3's SDL_AudioSpec fields used here). */
 data class SDLAudioSpec(
-    val format: Int = SDLAudioFormat.F32LE,
+    val format: Int = SDLAudioFormat.F32,
     val channels: Int = 2,
     val freq: Int = 48000,
 )
