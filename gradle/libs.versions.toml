@@ -4,14 +4,14 @@ agp = "9.3.1"
 junit = "5.11.0"
 junit-platform = "1.11.0"
 maven-publish = "0.37.0"
+# Used only by the GL/Vulkan *examples* (their renderers call LWJGL directly);
+# the sdl-kmp library itself no longer depends on LWJGL.
 lwjgl = "3.4.2"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version.ref = "junit" }
 junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version.ref = "junit-platform" }
-lwjgl = { module = "org.lwjgl:lwjgl", version.ref = "lwjgl" }
-lwjgl-sdl = { module = "org.lwjgl:lwjgl-sdl", version.ref = "lwjgl" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

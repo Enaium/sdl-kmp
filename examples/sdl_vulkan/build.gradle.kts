@@ -114,6 +114,14 @@ kotlin {
             dependencies {
                 val lwjglVersion = libs.versions.lwjgl.get()
                 implementation("org.lwjgl:lwjgl-vulkan:$lwjglVersion")
+                // LWJGL core natives (the extension modules' loaders need the
+                // shared core library, which sdl-kmp no longer pulls in).
+                implementation("org.lwjgl:lwjgl:$lwjglVersion")
+                listOf("linux", "macos", "macos-arm64", "windows").forEach { classifier ->
+                    runtimeOnly("org.lwjgl:lwjgl:$lwjglVersion") {
+                        artifact { this.classifier = "natives-$classifier" }
+                    }
+                }
                 // LWJGL only ships macOS natives for Vulkan (Linux/Windows use
                 // the system Vulkan driver), while OpenGL ships all platforms.
                 listOf("macos", "macos-arm64").forEach { classifier ->

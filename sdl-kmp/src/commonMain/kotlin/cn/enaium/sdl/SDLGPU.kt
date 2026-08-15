@@ -483,6 +483,13 @@ interface SDLGPUCommandBuffer : AutoCloseable {
     fun pushVertexUniformData(slot: Int, data: ByteArray)
     fun pushFragmentUniformData(slot: Int, data: ByteArray)
 
+    /**
+     * Uploads [data] into [buffer] at [offset] with a copy pass inside this
+     * command buffer (before any render pass begins); returns `false` on
+     * failure. The copy is executed when the command buffer is submitted.
+     */
+    fun uploadToBuffer(buffer: SDLGPUBuffer, data: ByteArray, offset: Int = 0): Boolean
+
     /** Ends the command buffer (use [SDLGPUDevice.submit] afterwards). */
     fun end()
 

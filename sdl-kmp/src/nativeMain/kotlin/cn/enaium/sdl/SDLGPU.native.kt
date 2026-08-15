@@ -421,6 +421,40 @@ internal class NativeSDLGPUCommandBuffer internal constructor(
         }
     }
 
+    override fun uploadToBuffer(buffer: SDLGPUBuffer, data: ByteArray, offset: Int): Boolean = memScoped {
+        val native = (buffer as? NativeSDLGPUBuffer)?.raw
+            ?: throw IllegalArgumentException("buffer is not a native SDL GPU buffer")
+        if (offset + data.size > buffer.size) return false
+        val dev = device.raw ?: return false
+        val transfer = alloc<SDL_GPUTransferBufferCreateInfo>()
+        transfer.usage = SDL_GPUTransferBufferUsage.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD
+        transfer.size = data.size.toUInt()
+        val tbuffer = SDL_CreateGPUTransferBuffer(dev, transfer.ptr) ?: return false
+        try {
+            val mapped = SDL_MapGPUTransferBuffer(dev, tbuffer, false) ?: return false
+            data.usePinned { pinned ->
+                val src = pinned.addressOf(0).reinterpret<ByteVar>()
+                val dst = mapped.reinterpret<ByteVar>()
+                for (i in 0 until data.size) dst[i] = src[i]
+            }
+            SDL_UnmapGPUTransferBuffer(dev, tbuffer)
+
+            val pass = SDL_BeginGPUCopyPass(check())
+            val src = alloc<SDL_GPUTransferBufferLocation>()
+            src.transfer_buffer = tbuffer
+            src.offset = 0u
+            val region = alloc<SDL_GPUBufferRegion>()
+            region.buffer = native
+            region.offset = offset.toUInt()
+            region.size = data.size.toUInt()
+            SDL_UploadToGPUBuffer(pass, src.ptr, region.ptr, false)
+            SDL_EndGPUCopyPass(pass)
+            true
+        } finally {
+            SDL_ReleaseGPUTransferBuffer(dev, tbuffer)
+        }
+    }
+
     override fun end() {
         // The command buffer is submitted through SDLGPUDevice.submit; mark
         // it as no longer usable here so accidental double use fails fast.

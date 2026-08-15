@@ -194,55 +194,16 @@ kotlin {
 
         jvmMain {
             dependencies {
-                // SDL3 on the JVM comes from LWJGL 3.4.x (org.lwjgl:lwjgl-sdl).
-                // LWJGL does not support Android, so there is no Android target.
-                implementation(libs.lwjgl)
-                implementation(libs.lwjgl.sdl)
-                // LWJGL's public API is annotated with jspecify; make the
-                // annotation classes available to the compiler.
-                implementation("org.jspecify:jspecify:1.0.0")
-                // VkInstance/VkPhysicalDevice handles used by SDL_Vulkan_GetPresentationSupport
-                implementation("org.lwjgl:lwjgl-vulkan:${libs.versions.lwjgl.get()}")
-                runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") {
-                    artifact {
-                        classifier = "natives-linux"
-                    }
-                }
-                runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") {
-                    artifact {
-                        classifier = "natives-macos"
-                    }
-                }
-                runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") {
-                    artifact {
-                        classifier = "natives-macos-arm64"
-                    }
-                }
-                runtimeOnly("org.lwjgl:lwjgl:${libs.versions.lwjgl.get()}") {
-                    artifact {
-                        classifier = "natives-windows"
-                    }
-                }
-                runtimeOnly("org.lwjgl:lwjgl-sdl:${libs.versions.lwjgl.get()}") {
-                    artifact {
-                        classifier = "natives-linux"
-                    }
-                }
-                runtimeOnly("org.lwjgl:lwjgl-sdl:${libs.versions.lwjgl.get()}") {
-                    artifact {
-                        classifier = "natives-macos"
-                    }
-                }
-                runtimeOnly("org.lwjgl:lwjgl-sdl:${libs.versions.lwjgl.get()}") {
-                    artifact {
-                        classifier = "natives-macos-arm64"
-                    }
-                }
-                runtimeOnly("org.lwjgl:lwjgl-sdl:${libs.versions.lwjgl.get()}") {
-                    artifact {
-                        classifier = "natives-windows"
-                    }
-                }
+                // SDL3 on the JVM comes from our own JNI shared library
+                // (libsdl_jni), built from the SDL submodule. Bundle all five
+                // JNI artifacts so consumers get the right native binary out
+                // of the box; NativeLoader picks one at runtime by
+                // os.name/os.arch.
+                runtimeOnly(project(":jni-jvm-linux-x86_64"))
+                runtimeOnly(project(":jni-jvm-linux-aarch64"))
+                runtimeOnly(project(":jni-jvm-darwin-x86_64"))
+                runtimeOnly(project(":jni-jvm-darwin-aarch64"))
+                runtimeOnly(project(":jni-jvm-windows-x86_64"))
             }
         }
 
@@ -424,8 +385,8 @@ mavenPublishing {
         name.set("sdl-kmp")
         description.set(
             "Kotlin Multiplatform bindings for SDL3. " +
-                    "JVM uses the official LWJGL bindings; native targets embed the statically " +
-                    "compiled SDL3 library into the published klib.",
+                    "JVM uses a self-contained JNI shared library built from the SDL3 source; " +
+                    "native targets embed the statically compiled SDL3 library into the published klib.",
         )
         url.set("https://github.com/Enaium/sdl-kmp")
         inceptionYear.set("2026")

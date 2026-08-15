@@ -116,6 +116,14 @@ kotlin {
             dependencies {
                 val lwjglVersion = libs.versions.lwjgl.get()
                 implementation("org.lwjgl:lwjgl-opengl:$lwjglVersion")
+                // LWJGL core natives (the extension modules' loaders need the
+                // shared core library, which sdl-kmp no longer pulls in).
+                implementation("org.lwjgl:lwjgl:$lwjglVersion")
+                listOf("linux", "macos", "macos-arm64", "windows").forEach { classifier ->
+                    runtimeOnly("org.lwjgl:lwjgl:$lwjglVersion") {
+                        artifact { this.classifier = "natives-$classifier" }
+                    }
+                }
                 listOf("linux", "macos", "macos-arm64", "windows").forEach { classifier ->
                     runtimeOnly("org.lwjgl:lwjgl-opengl:$lwjglVersion") {
                         artifact { this.classifier = "natives-$classifier" }

@@ -22,44 +22,6 @@
 
 package cn.enaium.sdl
 
-import org.lwjgl.sdl.SDLAudio
-import org.lwjgl.sdl.SDLClipboard
-import org.lwjgl.sdl.SDLFileSystem
-import org.lwjgl.sdl.SDLGamepad as LwjglSDLGamepad
-import org.lwjgl.sdl.SDLJoystick as LwjglSDLJoystick
-import org.lwjgl.sdl.SDLMisc
-import org.lwjgl.sdl.SDLMouse
-import org.lwjgl.sdl.SDLPixels
-import org.lwjgl.sdl.SDLPower
-import org.lwjgl.sdl.SDLSurface as LwjglSDLSurface
-import org.lwjgl.sdl.SDL_AudioSpec
-import org.lwjgl.sdl.SDL_FPoint
-import org.lwjgl.sdl.SDL_Rect
-import org.lwjgl.sdl.SDL_Texture
-import org.lwjgl.sdl.SDL_DisplayMode
-import org.lwjgl.sdl.SDL_MessageBoxButtonData
-import org.lwjgl.sdl.SDL_MessageBoxData
-import org.lwjgl.sdl.SDL_Surface
-import org.lwjgl.sdl.SDLError
-import org.lwjgl.sdl.SDLEvents
-import org.lwjgl.sdl.SDLHints
-import org.lwjgl.sdl.SDLInit
-import org.lwjgl.sdl.SDLKeyboard
-import org.lwjgl.sdl.SDLMain
-import org.lwjgl.sdl.SDLMessageBox
-import org.lwjgl.sdl.SDL_FRect
-import org.lwjgl.sdl.SDLRender
-import org.lwjgl.sdl.SDLTimer
-import org.lwjgl.sdl.SDLVersion as LwjglSDLVersion
-import org.lwjgl.sdl.SDLVideo
-import org.lwjgl.sdl.SDLVulkan
-import org.lwjgl.sdl.SDL_Event
-import org.lwjgl.sdl.SDL_EventFilterI
-import org.lwjgl.sdl.SDL_DialogFileCallbackI
-import org.lwjgl.sdl.SDLDialog
-import org.lwjgl.system.JNI
-import org.lwjgl.system.MemoryStack
-import org.lwjgl.system.MemoryUtil
 import java.nio.ByteOrder
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -68,31 +30,28 @@ import java.util.concurrent.atomic.AtomicLong
 internal actual val hostIsLittleEndian: Boolean = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN
 
 // =========================================================================
-// JVM callback adapters (event watch / file dialogs)
+// JVM callback maps (event watch / file dialogs / log output)
+//
+// The C side (jni_bridge.cpp) keeps a native callback per id and dispatches
+// back through the static bridge methods on Jni (onEventWatch /
+// onDialogCallback / onLogOutput), which look the Kotlin callback up here.
 // =========================================================================
 
 private const val DIALOG_OPEN_FILE = 1
 private const val DIALOG_SAVE_FILE = 2
 private const val DIALOG_OPEN_FOLDER = 3
 
-private val eventWatchCallbacks = ConcurrentHashMap<Long, (SDLEventRaw) -> Boolean>()
-private val eventWatchNextId = AtomicLong(0)
-private val eventWatchAdapters = ConcurrentHashMap<Long, SDL_EventFilterAdapter>()
+internal val eventWatchCallbacks = ConcurrentHashMap<Long, (SDLEventRaw) -> Boolean>()
+internal val eventWatchNextId = AtomicLong(0)
 
-private class SDL_EventFilterAdapter(private val id: Long) : SDL_EventFilterI {
+internal val dialogCallbacks = ConcurrentHashMap<Long, (List<String>) -> Unit>()
+internal val dialogNextId = AtomicLong(0)
 
-    override fun invoke(userdata: Long, event: Long): Boolean {
-        val filter = eventWatchCallbacks[id] ?: return true
-        return try {
-            filter(BorrowedJvmEventRaw(event))
-        } catch (t: Throwable) {
-            true
-        }
-    }
-}
+internal val logOutputCallbacks = ConcurrentHashMap<Long, SDLLogOutput>()
+internal val logOutputNextId = AtomicLong(0)
 
 /** An event owned by SDL's queue; closing it does nothing. */
-private class BorrowedJvmEventRaw(private val address: Long) : SDLEventRaw {
+internal class BorrowedJvmEventRaw(private val address: Long) : SDLEventRaw {
 
     override val ptr: Long
         get() = address
@@ -102,110 +61,92 @@ private class BorrowedJvmEventRaw(private val address: Long) : SDLEventRaw {
     }
 }
 
-private val dialogCallbacks = ConcurrentHashMap<Long, (List<String>) -> Unit>()
-private val dialogNextId = AtomicLong(0)
-private val dialogAdapters = ConcurrentHashMap<Long, SDL_DialogFileCallbackAdapter>()
-
-private class SDL_DialogFileCallbackAdapter(private val id: Long) : SDL_DialogFileCallbackI {
-
-    override fun invoke(userdata: Long, filelist: Long, filter: Int) {
-        val callback = dialogCallbacks.remove(id) ?: return
-        val files = if (filelist == 0L) {
-            emptyList()
-        } else {
-            val result = mutableListOf<String>()
-            var i = 0L
-            while (true) {
-                val p = MemoryUtil.memGetAddress(filelist + i * 8)
-                if (p == 0L) break
-                result.add(MemoryUtil.memUTF8(p) ?: "")
-                i++
-            }
-            result
-        }
-        callback(files)
-    }
-}
-
 // =========================================================================
-// JVM (LWJGL SDL3 bindings) implementations
+// JVM (JNI SDL3 bindings) implementations
 // =========================================================================
 
-private fun SDL_Event.toSDLEvent(): SDLEvent {
-    val type = type()
+private fun SDLEventRaw.toSDLEvent(): SDLEvent {
+    val event = this
+    val type = Jni.eventType(event.ptr)
+    val timestamp = Jni.eventTimestamp(event.ptr).toULong()
     return when (type) {
-        SDLEventType.QUIT -> SDLEvent.Quit(quit().timestamp().toULong())
+        SDLEventType.QUIT -> SDLEvent.Quit(timestamp)
         in SDLEventType.WINDOW_FIRST until SDLEventType.KEY_FIRST ->
             SDLEvent.Window(
-                timestamp = window().timestamp().toULong(),
-                windowId = window().windowID(),
+                timestamp = timestamp,
+                windowId = Jni.eventWindowWindowID(event.ptr),
                 type = type,
-                data1 = window().data1(),
-                data2 = window().data2(),
+                data1 = Jni.eventWindowData1(event.ptr),
+                data2 = Jni.eventWindowData2(event.ptr),
             )
         SDLEventType.KEY_DOWN, SDLEventType.KEY_UP ->
             SDLEvent.Key(
-                timestamp = key().timestamp().toULong(),
-                windowId = key().windowID(),
-                down = key().down(),
-                repeat = key().repeat(),
-                keycode = key().key(),
-                scancode = key().scancode(),
-                modifiers = key().mod().toInt(),
+                timestamp = timestamp,
+                windowId = Jni.eventKeyWindowID(event.ptr),
+                down = Jni.eventKeyState(event.ptr) != 0,
+                repeat = Jni.eventKeyRepeat(event.ptr),
+                keycode = Jni.eventKeyKeycode(event.ptr),
+                scancode = Jni.eventKeyScancode(event.ptr),
+                modifiers = Jni.eventKeyMod(event.ptr),
             )
         SDLEventType.TEXT_INPUT ->
             SDLEvent.TextInput(
-                timestamp = text().timestamp().toULong(),
-                windowId = text().windowID(),
-                text = text().text()?.let { MemoryUtil.memUTF8(it) } ?: "",
+                timestamp = timestamp,
+                windowId = Jni.eventTextWindowID(event.ptr),
+                text = Jni.eventTextText(event.ptr),
             )
         SDLEventType.MOUSE_MOTION ->
             SDLEvent.MouseMotion(
-                timestamp = motion().timestamp().toULong(),
-                windowId = motion().windowID(),
-                x = motion().x(),
-                y = motion().y(),
-                dx = motion().xrel(),
-                dy = motion().yrel(),
+                timestamp = timestamp,
+                windowId = Jni.eventMotionWindowID(event.ptr),
+                x = Jni.eventMotionX(event.ptr),
+                y = Jni.eventMotionY(event.ptr),
+                dx = Jni.eventMotionXrel(event.ptr),
+                dy = Jni.eventMotionYrel(event.ptr),
             )
         SDLEventType.MOUSE_BUTTON_DOWN, SDLEventType.MOUSE_BUTTON_UP ->
             SDLEvent.MouseButton(
-                timestamp = button().timestamp().toULong(),
-                windowId = button().windowID(),
-                down = button().down(),
-                button = button().button().toInt(),
-                clicks = button().clicks().toInt(),
-                x = button().x(),
-                y = button().y(),
+                timestamp = timestamp,
+                windowId = Jni.eventButtonWindowID(event.ptr),
+                down = Jni.eventButtonState(event.ptr) != 0,
+                button = Jni.eventButtonButton(event.ptr),
+                clicks = Jni.eventButtonClicks(event.ptr),
+                x = Jni.eventButtonX(event.ptr),
+                y = Jni.eventButtonY(event.ptr),
             )
         SDLEventType.MOUSE_WHEEL ->
             SDLEvent.MouseWheel(
-                timestamp = wheel().timestamp().toULong(),
-                windowId = wheel().windowID(),
-                x = wheel().x(),
-                y = wheel().y(),
-                direction = wheel().direction(),
+                timestamp = timestamp,
+                windowId = Jni.eventWheelWindowID(event.ptr),
+                x = Jni.eventWheelX(event.ptr),
+                y = Jni.eventWheelY(event.ptr),
+                direction = Jni.eventWheelDirection(event.ptr),
             )
         else -> SDLEvent.Unknown(timestamp = type.toULong(), type = type)
     }
 }
 
 // =========================================================================
-// JVM (LWJGL) raw event
+// JVM (JNI) raw event
 // =========================================================================
 
-internal class JvmSDLEventRaw internal constructor(val event: SDL_Event) : SDLEventRaw {
+internal class JvmSDLEventRaw internal constructor(ptr: Long) : SDLEventRaw {
+
+    private var event: Long = ptr
 
     override val ptr: Long
-        get() = event.address()
+        get() = event
 
     override fun close() {
-        event.free()
+        val e = event
+        if (e == 0L) return
+        event = 0L
+        Jni.eventFree(e)
     }
 }
 
 // =========================================================================
-// JVM (LWJGL) window
+// JVM (JNI) window
 // =========================================================================
 
 internal class JvmSDLWindow internal constructor(ptr: Long) : SDLWindow {
@@ -214,184 +155,166 @@ internal class JvmSDLWindow internal constructor(ptr: Long) : SDLWindow {
         private set
 
     override val id: Int
-        get() = SDLVideo.SDL_GetWindowID(ptr)
+        get() = Jni.getWindowID(ptr)
 
     override var title: String
-        get() = SDLVideo.SDL_GetWindowTitle(ptr) ?: ""
+        get() = Jni.getWindowTitle(ptr) ?: ""
         set(value) {
-            SDLVideo.SDL_SetWindowTitle(ptr, value)
+            Jni.setWindowTitle(ptr, value)
         }
 
     override var size: SDLPoint
-        get() = MemoryStack.stackPush().use { stack ->
-            val w = stack.mallocInt(1)
-            val h = stack.mallocInt(1)
-            SDLVideo.SDL_GetWindowSize(ptr, w, h)
-            SDLPoint(w.get(0), h.get(0))
+        get() {
+            val s = Jni.getWindowSize(ptr)
+            return SDLPoint(s[0], s[1])
         }
         set(value) {
-            SDLVideo.SDL_SetWindowSize(ptr, value.x, value.y)
+            Jni.setWindowSize(ptr, value.x, value.y)
         }
 
     override val flags: ULong
-        get() = SDLVideo.SDL_GetWindowFlags(ptr).toULong()
+        get() = Jni.getWindowFlags(ptr).toULong()
 
     override var position: SDLPoint
-        get() = MemoryStack.stackPush().use { stack ->
-            val x = stack.mallocInt(1)
-            val y = stack.mallocInt(1)
-            SDLVideo.SDL_GetWindowPosition(ptr, x, y)
-            SDLPoint(x.get(0), y.get(0))
+        get() {
+            val p = Jni.getWindowPosition(ptr)
+            return SDLPoint(p[0], p[1])
         }
         set(value) {
-            SDLVideo.SDL_SetWindowPosition(ptr, value.x, value.y)
+            Jni.setWindowPosition(ptr, value.x, value.y)
         }
 
     override val sizeInPixels: SDLPoint
-        get() = MemoryStack.stackPush().use { stack ->
-            val w = stack.mallocInt(1)
-            val h = stack.mallocInt(1)
-            SDLVideo.SDL_GetWindowSizeInPixels(ptr, w, h)
-            SDLPoint(w.get(0), h.get(0))
+        get() {
+            val s = Jni.getWindowSizeInPixels(ptr)
+            return SDLPoint(s[0], s[1])
         }
 
     override val displayId: Int
-        get() = SDLVideo.SDL_GetDisplayForWindow(ptr)
+        get() = Jni.getDisplayForWindow(ptr)
 
     override var opacity: Float
-        get() = SDLVideo.SDL_GetWindowOpacity(ptr)
+        get() = Jni.getWindowOpacity(ptr)
         set(value) {
-            SDLVideo.SDL_SetWindowOpacity(ptr, value)
+            Jni.setWindowOpacity(ptr, value)
         }
 
     override var fullscreen: Boolean
         get() = (flags and SDLWindowFlags.FULLSCREEN) != 0uL
         set(value) {
-            SDLVideo.SDL_SetWindowFullscreen(ptr, value)
+            Jni.setWindowFullscreen(ptr, value)
         }
 
     override var bordered: Boolean
         get() = (flags and SDLWindowFlags.BORDERLESS) == 0uL
         set(value) {
-            SDLVideo.SDL_SetWindowBordered(ptr, value)
+            Jni.setWindowBordered(ptr, value)
         }
 
     override var resizable: Boolean
         get() = (flags and SDLWindowFlags.RESIZABLE) != 0uL
         set(value) {
-            SDLVideo.SDL_SetWindowResizable(ptr, value)
+            Jni.setWindowResizable(ptr, value)
         }
 
     override var alwaysOnTop: Boolean
         get() = (flags and SDLWindowFlags.ALWAYS_ON_TOP) != 0uL
         set(value) {
-            SDLVideo.SDL_SetWindowAlwaysOnTop(ptr, value)
+            Jni.setWindowAlwaysOnTop(ptr, value)
         }
 
     override var mouseGrab: Boolean
-        get() = SDLVideo.SDL_GetWindowMouseGrab(ptr)
+        get() = Jni.getWindowMouseGrab(ptr)
         set(value) {
-            SDLVideo.SDL_SetWindowMouseGrab(ptr, value)
+            Jni.setWindowMouseGrab(ptr, value)
         }
 
     override var keyboardGrab: Boolean
-        get() = SDLVideo.SDL_GetWindowKeyboardGrab(ptr)
+        get() = Jni.getWindowKeyboardGrab(ptr)
         set(value) {
-            SDLVideo.SDL_SetWindowKeyboardGrab(ptr, value)
+            Jni.setWindowKeyboardGrab(ptr, value)
         }
 
     override var relativeMouseMode: Boolean
-        get() = SDLMouse.SDL_GetWindowRelativeMouseMode(ptr)
+        get() = Jni.getWindowRelativeMouseMode(ptr)
         set(value) {
-            SDLMouse.SDL_SetWindowRelativeMouseMode(ptr, value)
+            Jni.setWindowRelativeMouseMode(ptr, value)
         }
 
     override var minimumSize: SDLPoint?
-        get() = MemoryStack.stackPush().use { stack ->
-            val w = stack.mallocInt(1)
-            val h = stack.mallocInt(1)
-            SDLVideo.SDL_GetWindowMinimumSize(ptr, w, h)
-            SDLPoint(w.get(0), h.get(0))
+        get() {
+            val s = Jni.getWindowMinimumSize(ptr)
+            return SDLPoint(s[0], s[1])
         }
         set(value) {
-            SDLVideo.SDL_SetWindowMinimumSize(ptr, value?.x ?: 0, value?.y ?: 0)
+            Jni.setWindowMinimumSize(ptr, value?.x ?: 0, value?.y ?: 0)
         }
 
     override var maximumSize: SDLPoint?
-        get() = MemoryStack.stackPush().use { stack ->
-            val w = stack.mallocInt(1)
-            val h = stack.mallocInt(1)
-            SDLVideo.SDL_GetWindowMaximumSize(ptr, w, h)
-            SDLPoint(w.get(0), h.get(0))
+        get() {
+            val s = Jni.getWindowMaximumSize(ptr)
+            return SDLPoint(s[0], s[1])
         }
         set(value) {
-            SDLVideo.SDL_SetWindowMaximumSize(ptr, value?.x ?: 0, value?.y ?: 0)
+            Jni.setWindowMaximumSize(ptr, value?.x ?: 0, value?.y ?: 0)
         }
 
     override fun maximize() {
-        SDLVideo.SDL_MaximizeWindow(ptr)
+        Jni.maximizeWindow(ptr)
     }
 
     override fun minimize() {
-        SDLVideo.SDL_MinimizeWindow(ptr)
+        Jni.minimizeWindow(ptr)
     }
 
     override fun restore() {
-        SDLVideo.SDL_RestoreWindow(ptr)
+        Jni.restoreWindow(ptr)
     }
 
     override fun flash() {
-        SDLVideo.SDL_FlashWindow(ptr, 0)
+        Jni.flashWindow(ptr)
     }
 
     override val surface: cn.enaium.sdl.SDLSurface?
         get() {
-            val surface = SDLVideo.SDL_GetWindowSurface(ptr) ?: return null
+            val surface = Jni.getWindowSurface(ptr)
+            if (surface == 0L) return null
             return JvmSDLSurface(surface, owned = false)
         }
 
     override fun setIcon(icon: cn.enaium.sdl.SDLSurface): Boolean {
-        val jvmIcon = (icon as? JvmSDLSurface)?.surface
+        val jvmIcon = (icon as? JvmSDLSurface)?.ptr
             ?: throw IllegalArgumentException("icon is not a JVM SDL surface")
-        return SDLVideo.SDL_SetWindowIcon(ptr, jvmIcon)
+        return Jni.setWindowIcon(ptr, jvmIcon)
     }
 
     override var aspectRatio: SDLFloatPoint?
-        get() = MemoryStack.stackPush().use { stack ->
-            val min = stack.mallocFloat(1)
-            val max = stack.mallocFloat(1)
-            if (SDLVideo.SDL_GetWindowAspectRatio(ptr, min, max)) {
-                SDLFloatPoint(min.get(0), max.get(0))
-            } else {
-                null
-            }
-        }
+        get() = Jni.getWindowAspectRatio(ptr)?.let { SDLFloatPoint(it[0], it[1]) }
         set(value) {
-            SDLVideo.SDL_SetWindowAspectRatio(ptr, value?.x ?: 0f, value?.y ?: 0f)
+            Jni.setWindowAspectRatio(ptr, value?.x ?: 0f, value?.y ?: 0f)
         }
-
 
     override fun show() {
-        SDLVideo.SDL_ShowWindow(ptr)
+        Jni.showWindow(ptr)
     }
 
     override fun hide() {
-        SDLVideo.SDL_HideWindow(ptr)
+        Jni.hideWindow(ptr)
     }
 
     override fun raise() {
-        SDLVideo.SDL_RaiseWindow(ptr)
+        Jni.raiseWindow(ptr)
     }
 
     override fun close() {
         if (ptr == 0L) return
-        SDLVideo.SDL_DestroyWindow(ptr)
+        Jni.destroyWindow(ptr)
         ptr = 0L
     }
 }
 
 // =========================================================================
-// JVM (LWJGL) renderer
+// JVM (JNI) renderer
 // =========================================================================
 
 internal class JvmSDLRenderer internal constructor(ptr: Long) : SDLRenderer {
@@ -400,210 +323,128 @@ internal class JvmSDLRenderer internal constructor(ptr: Long) : SDLRenderer {
         private set
 
     override val name: String?
-        get() = SDLRender.SDL_GetRendererName(ptr)
+        get() = Jni.getRendererName(ptr)
 
     override var drawColor: SDLColor
-        get() = MemoryStack.stackPush().use { stack ->
-            val r = stack.malloc(1)
-            val g = stack.malloc(1)
-            val b = stack.malloc(1)
-            val a = stack.malloc(1)
-            SDLRender.SDL_GetRenderDrawColor(ptr, r, g, b, a)
-            SDLColor(
-                r.get(0).toInt() and 0xff,
-                g.get(0).toInt() and 0xff,
-                b.get(0).toInt() and 0xff,
-                a.get(0).toInt() and 0xff,
-            )
+        get() {
+            val c = Jni.getRenderDrawColor(ptr)
+            return SDLColor(c[0], c[1], c[2], c[3])
         }
         set(value) {
-            SDLRender.SDL_SetRenderDrawColor(
-                ptr,
-                value.r.toByte(),
-                value.g.toByte(),
-                value.b.toByte(),
-                value.a.toByte(),
-            )
+            Jni.setRenderDrawColor(ptr, value.r, value.g, value.b, value.a)
         }
 
     override val outputSize: SDLPoint
-        get() = MemoryStack.stackPush().use { stack ->
-            val w = stack.mallocInt(1)
-            val h = stack.mallocInt(1)
-            SDLRender.SDL_GetRenderOutputSize(ptr, w, h)
-            SDLPoint(w.get(0), h.get(0))
+        get() {
+            val s = Jni.getRenderOutputSize(ptr)
+            return SDLPoint(s[0], s[1])
         }
 
     override val currentOutputSize: SDLPoint
-        get() = MemoryStack.stackPush().use { stack ->
-            val w = stack.mallocInt(1)
-            val h = stack.mallocInt(1)
-            SDLRender.SDL_GetCurrentRenderOutputSize(ptr, w, h)
-            SDLPoint(w.get(0), h.get(0))
+        get() {
+            val s = Jni.getCurrentRenderOutputSize(ptr)
+            return SDLPoint(s[0], s[1])
         }
 
     override var viewport: SDLRect?
         get() {
-            val r = SDL_Rect.calloc()
-            try {
-                SDLRender.SDL_GetRenderViewport(ptr, r)
-                return SDLRect(r.x(), r.y(), r.w(), r.h())
-            } finally {
-                r.free()
-            }
+            val r = Jni.getRenderViewport(ptr)
+            return SDLRect(r[0], r[1], r[2], r[3])
         }
         set(value) {
-            if (value == null) {
-                SDLRender.nSDL_SetRenderViewport(ptr, 0L)
-            } else {
-                val r = SDL_Rect.calloc()
-                try {
-                    r.x(value.x).y(value.y).w(value.width).h(value.height)
-                    SDLRender.SDL_SetRenderViewport(ptr, r)
-                } finally {
-                    r.free()
-                }
-            }
+            Jni.setRenderViewport(ptr, value?.let { intArrayOf(it.x, it.y, it.width, it.height) })
         }
 
     override var clipRect: SDLRect?
         get() {
-            val r = SDL_Rect.calloc()
-            try {
-                SDLRender.SDL_GetRenderClipRect(ptr, r)
-                return SDLRect(r.x(), r.y(), r.w(), r.h())
-            } finally {
-                r.free()
-            }
+            val r = Jni.getRenderClipRect(ptr)
+            return SDLRect(r[0], r[1], r[2], r[3])
         }
         set(value) {
-            if (value == null) {
-                SDLRender.nSDL_SetRenderClipRect(ptr, 0L)
-            } else {
-                val r = SDL_Rect.calloc()
-                try {
-                    r.x(value.x).y(value.y).w(value.width).h(value.height)
-                    SDLRender.SDL_SetRenderClipRect(ptr, r)
-                } finally {
-                    r.free()
-                }
-            }
+            Jni.setRenderClipRect(ptr, value?.let { intArrayOf(it.x, it.y, it.width, it.height) })
         }
 
     override var scale: SDLFloatPoint
-        get() = MemoryStack.stackPush().use { stack ->
-            val x = stack.mallocFloat(1)
-            val y = stack.mallocFloat(1)
-            SDLRender.SDL_GetRenderScale(ptr, x, y)
-            SDLFloatPoint(x.get(0), y.get(0))
+        get() {
+            val s = Jni.getRenderScale(ptr)
+            return SDLFloatPoint(s[0], s[1])
         }
         set(value) {
-            SDLRender.SDL_SetRenderScale(ptr, value.x, value.y)
+            Jni.setRenderScale(ptr, value.x, value.y)
         }
 
     override var blendMode: Int
-        get() = MemoryStack.stackPush().use { stack ->
-            val mode = stack.mallocInt(1)
-            SDLRender.SDL_GetRenderDrawBlendMode(ptr, mode)
-            mode.get(0)
-        }
+        get() = Jni.getRenderDrawBlendMode(ptr)
         set(value) {
-            SDLRender.SDL_SetRenderDrawBlendMode(ptr, value)
+            Jni.setRenderDrawBlendMode(ptr, value)
         }
 
     override var vsync: Boolean
-        get() = MemoryStack.stackPush().use { stack ->
-            val vsync = stack.mallocInt(1)
-            SDLRender.SDL_GetRenderVSync(ptr, vsync)
-            vsync.get(0) != 0
-        }
+        get() = Jni.getRenderVSync(ptr) != 0
         set(value) {
-            SDLRender.SDL_SetRenderVSync(ptr, if (value) 1 else 0)
+            Jni.setRenderVSync(ptr, if (value) 1 else 0)
         }
 
     override var target: SDLTexture?
         get() {
-            val texture = SDLRender.SDL_GetRenderTarget(ptr) ?: return null
+            val texture = Jni.getRenderTarget(ptr)
+            if (texture == 0L) return null
             return JvmSDLTexture(texture, this)
         }
         set(value) {
-            val texture = (value as? JvmSDLTexture)?.texture
-            SDLRender.SDL_SetRenderTarget(ptr, texture)
+            Jni.setRenderTarget(ptr, (value as? JvmSDLTexture)?.ptr ?: 0L)
         }
 
-    override fun clear(): Boolean = SDLRender.SDL_RenderClear(ptr)
+    override fun clear(): Boolean = Jni.renderClear(ptr)
 
     override fun present() {
-        SDLRender.SDL_RenderPresent(ptr)
+        Jni.renderPresent(ptr)
     }
 
-    override fun fillRect(rect: SDLRect): Boolean {
-        val r = SDL_FRect.calloc()
-        try {
-            r.x(rect.x.toFloat()).y(rect.y.toFloat()).w(rect.width.toFloat()).h(rect.height.toFloat())
-            return SDLRender.SDL_RenderFillRect(ptr, r)
-        } finally {
-            r.free()
-        }
-    }
+    override fun fillRect(rect: SDLRect): Boolean =
+        Jni.renderFillRect(ptr, rect.x.toFloat(), rect.y.toFloat(), rect.width.toFloat(), rect.height.toFloat())
 
-    override fun drawRect(rect: SDLRect): Boolean {
-        val r = SDL_FRect.calloc()
-        try {
-            r.x(rect.x.toFloat()).y(rect.y.toFloat()).w(rect.width.toFloat()).h(rect.height.toFloat())
-            return SDLRender.SDL_RenderRect(ptr, r)
-        } finally {
-            r.free()
-        }
-    }
+    override fun drawRect(rect: SDLRect): Boolean =
+        Jni.renderRect(ptr, rect.x.toFloat(), rect.y.toFloat(), rect.width.toFloat(), rect.height.toFloat())
 
     override fun drawLine(x1: Int, y1: Int, x2: Int, y2: Int): Boolean =
-        SDLRender.SDL_RenderLine(ptr, x1.toFloat(), y1.toFloat(), x2.toFloat(), y2.toFloat())
+        Jni.renderLine(ptr, x1.toFloat(), y1.toFloat(), x2.toFloat(), y2.toFloat())
 
     override fun drawPoint(x: Int, y: Int): Boolean =
-        SDLRender.SDL_RenderPoint(ptr, x.toFloat(), y.toFloat())
+        Jni.renderPoint(ptr, x.toFloat(), y.toFloat())
 
     override fun drawPoints(points: List<SDLPoint>): Boolean {
-        val buffer = SDL_FPoint.calloc(points.size)
-        try {
-            for (i in points.indices) {
-                buffer.get(i).x(points[i].x.toFloat()).y(points[i].y.toFloat())
-            }
-            return SDLRender.SDL_RenderPoints(ptr, buffer)
-        } finally {
-            buffer.free()
+        val buffer = FloatArray(points.size * 2)
+        for (i in points.indices) {
+            buffer[i * 2] = points[i].x.toFloat()
+            buffer[i * 2 + 1] = points[i].y.toFloat()
         }
+        return Jni.renderPoints(ptr, buffer)
     }
 
     override fun createTexture(format: Int, access: Int, width: Int, height: Int): SDLTexture {
-        val texture = SDLRender.SDL_CreateTexture(ptr, format, access, width, height)
-            ?: throw IllegalStateException("SDL_CreateTexture failed: ${SDL.error()}")
+        val texture = Jni.createTexture(ptr, format, access, width, height)
+        check(texture != 0L) { "SDL_CreateTexture failed: ${SDL.error()}" }
         return JvmSDLTexture(texture, this)
     }
 
     override fun createTextureFromSurface(surface: SDLSurface): SDLTexture {
-        val jvmSurface = (surface as? JvmSDLSurface)?.surface
+        val jvmSurface = (surface as? JvmSDLSurface)?.ptr
             ?: throw IllegalArgumentException("surface is not a JVM SDL surface")
-        val texture = SDLRender.SDL_CreateTextureFromSurface(ptr, jvmSurface)
-            ?: throw IllegalStateException("SDL_CreateTextureFromSurface failed: ${SDL.error()}")
+        val texture = Jni.createTextureFromSurface(ptr, jvmSurface)
+        check(texture != 0L) { "SDL_CreateTextureFromSurface failed: ${SDL.error()}" }
         return JvmSDLTexture(texture, this)
     }
 
     override fun renderTexture(texture: SDLTexture, src: SDLFRect?, dst: SDLFRect?): Boolean {
-        val t = (texture as? JvmSDLTexture)?.texture
+        val t = (texture as? JvmSDLTexture)?.ptr
             ?: throw IllegalArgumentException("texture is not a JVM SDL texture")
-        return if (src == null && dst == null) {
-            SDLRender.nSDL_RenderTexture(ptr, (t as org.lwjgl.system.Struct<*>).address(), 0L, 0L)
-        } else {
-            val srcR = src?.let { SDL_FRect.calloc().also { r -> r.x(it.x).y(it.y).w(it.width).h(it.height) } }
-            val dstR = dst?.let { SDL_FRect.calloc().also { r -> r.x(it.x).y(it.y).w(it.width).h(it.height) } }
-            try {
-                SDLRender.SDL_RenderTexture(ptr, t, srcR, dstR)
-            } finally {
-                srcR?.free()
-                dstR?.free()
-            }
-        }
+        return Jni.renderTexture(
+            ptr,
+            t,
+            src?.let { floatArrayOf(it.x, it.y, it.width, it.height) },
+            dst?.let { floatArrayOf(it.x, it.y, it.width, it.height) },
+        )
     }
 
     override fun renderTextureRotated(
@@ -614,18 +455,17 @@ internal class JvmSDLRenderer internal constructor(ptr: Long) : SDLRenderer {
         center: SDLFloatPoint?,
         flip: Int,
     ): Boolean {
-        val t = (texture as? JvmSDLTexture)?.texture
+        val t = (texture as? JvmSDLTexture)?.ptr
             ?: throw IllegalArgumentException("texture is not a JVM SDL texture")
-        val srcR = src?.let { SDL_FRect.calloc().also { r -> r.x(it.x).y(it.y).w(it.width).h(it.height) } }
-        val dstR = dst?.let { SDL_FRect.calloc().also { r -> r.x(it.x).y(it.y).w(it.width).h(it.height) } }
-        val centerP = center?.let { SDL_FPoint.calloc().also { p -> p.x(it.x).y(it.y) } }
-        return try {
-            SDLRender.SDL_RenderTextureRotated(ptr, t, srcR, dstR, angle, centerP, flip)
-        } finally {
-            srcR?.free()
-            dstR?.free()
-            centerP?.free()
-        }
+        return Jni.renderTextureRotated(
+            ptr,
+            t,
+            src?.let { floatArrayOf(it.x, it.y, it.width, it.height) },
+            dst?.let { floatArrayOf(it.x, it.y, it.width, it.height) },
+            angle,
+            center?.let { floatArrayOf(it.x, it.y) },
+            flip,
+        )
     }
 
     override fun renderTexture9Grid(
@@ -638,77 +478,51 @@ internal class JvmSDLRenderer internal constructor(ptr: Long) : SDLRenderer {
         scale: Float,
         dst: SDLFRect,
     ): Boolean {
-        val t = (texture as? JvmSDLTexture)?.texture
+        val t = (texture as? JvmSDLTexture)?.ptr
             ?: throw IllegalArgumentException("texture is not a JVM SDL texture")
-        val srcR = SDL_FRect.calloc().also { r -> r.x(src.x).y(src.y).w(src.width).h(src.height) }
-        val dstR = SDL_FRect.calloc().also { r -> r.x(dst.x).y(dst.y).w(dst.width).h(dst.height) }
-        return try {
-            SDLRender.SDL_RenderTexture9Grid(ptr, t, srcR, leftWidth, rightWidth, topHeight, bottomHeight, scale, dstR)
-        } finally {
-            srcR.free()
-            dstR.free()
-        }
+        return Jni.renderTexture9Grid(
+            ptr,
+            t,
+            src.x, src.y, src.width, src.height,
+            leftWidth, rightWidth, topHeight, bottomHeight, scale,
+            dst.x, dst.y, dst.width, dst.height,
+        )
     }
 
     override fun renderGeometry(texture: SDLTexture?, vertices: List<SDLVertex>, indices: IntArray?): Boolean {
-        val t = (texture as? JvmSDLTexture)?.texture
-        val vertexBuffer = org.lwjgl.sdl.SDL_Vertex.calloc(vertices.size)
-        return try {
-            for (i in vertices.indices) {
-                val v = vertices[i]
-                vertexBuffer.get(i).set(
-                    org.lwjgl.sdl.SDL_FPoint.calloc().also { p -> p.x(v.position.x).y(v.position.y) },
-                    org.lwjgl.sdl.SDL_FColor.calloc().also { c -> c.r(v.color.r / 255f).g(v.color.g / 255f).b(v.color.b / 255f).a(v.color.a / 255f) },
-                    org.lwjgl.sdl.SDL_FPoint.calloc().also { p -> p.x(v.texCoord.x).y(v.texCoord.y) },
-                )
-            }
-            if (indices == null) {
-                SDLRender.SDL_RenderGeometry(ptr, t, vertexBuffer, null)
-            } else {
-                val idx = MemoryUtil.memAllocInt(indices.size)
-                try {
-                    idx.put(indices).rewind()
-                    SDLRender.SDL_RenderGeometry(ptr, t, vertexBuffer, idx)
-                } finally {
-                    MemoryUtil.memFree(idx)
-                }
-            }
-        } finally {
-            vertexBuffer.free()
+        val t = (texture as? JvmSDLTexture)?.ptr ?: 0L
+        val positions = FloatArray(vertices.size * 2)
+        val colors = FloatArray(vertices.size * 4)
+        val texCoords = FloatArray(vertices.size * 2)
+        for (i in vertices.indices) {
+            val v = vertices[i]
+            positions[i * 2] = v.position.x
+            positions[i * 2 + 1] = v.position.y
+            colors[i * 4] = v.color.r / 255f
+            colors[i * 4 + 1] = v.color.g / 255f
+            colors[i * 4 + 2] = v.color.b / 255f
+            colors[i * 4 + 3] = v.color.a / 255f
+            texCoords[i * 2] = v.texCoord.x
+            texCoords[i * 2 + 1] = v.texCoord.y
         }
+        return Jni.renderGeometry(ptr, t, positions, colors, texCoords, indices)
     }
 
     override fun renderReadPixels(rect: SDLRect?): SDLSurface? {
-        val r = rect?.let {
-            SDL_Rect.calloc().also { s -> s.x(it.x).y(it.y).w(it.width).h(it.height) }
-        }
-        return try {
-            SDLRender.SDL_RenderReadPixels(ptr, r)?.let { JvmSDLSurface(it, owned = true) }
-        } finally {
-            r?.free()
-        }
+        val surface = Jni.renderReadPixels(ptr, rect?.let { intArrayOf(it.x, it.y, it.width, it.height) })
+        if (surface == 0L) return null
+        return JvmSDLSurface(surface, owned = true)
     }
 
     override fun setLogicalPresentation(width: Int, height: Int, mode: Int): Boolean =
-        SDLRender.SDL_SetRenderLogicalPresentation(ptr, width, height, mode)
+        Jni.setRenderLogicalPresentation(ptr, width, height, mode)
 
     override val logicalPresentationRect: SDLFRect?
-        get() {
-            val r = SDL_FRect.calloc()
-            return try {
-                if (SDLRender.SDL_GetRenderLogicalPresentationRect(ptr, r)) {
-                    SDLFRect(r.x(), r.y(), r.w(), r.h())
-                } else {
-                    null
-                }
-            } finally {
-                r.free()
-            }
-        }
+        get() = Jni.getRenderLogicalPresentationRect(ptr)?.let { SDLFRect(it[0], it[1], it[2], it[3]) }
 
     override fun close() {
         if (ptr == 0L) return
-        SDLRender.SDL_DestroyRenderer(ptr)
+        Jni.destroyRenderer(ptr)
         ptr = 0L
     }
 }
@@ -719,36 +533,34 @@ internal class JvmSDLRenderer internal constructor(ptr: Long) : SDLRenderer {
 
 actual object SDL {
 
-    // LWJGL bundles SDL3 and loads its native library on class load; on the
-    // JVM there is no SDL_main hijacking to guard against.
     actual fun setMainReady() {
-        SDLMain.SDL_SetMainReady()
+        Jni.setMainReady()
     }
 
-    actual fun init(flags: Int): Boolean = SDLInit.SDL_Init(flags)
+    actual fun init(flags: Int): Boolean = Jni.init(flags)
 
-    actual fun initSubSystem(flags: Int): Boolean = SDLInit.SDL_InitSubSystem(flags)
+    actual fun initSubSystem(flags: Int): Boolean = Jni.initSubSystem(flags)
 
     actual fun quitSubSystem(flags: Int) {
-        SDLInit.SDL_QuitSubSystem(flags)
+        Jni.quitSubSystem(flags)
     }
 
-    actual fun wasInit(flags: Int): Int = SDLInit.SDL_WasInit(flags)
+    actual fun wasInit(flags: Int): Int = Jni.wasInit(flags)
 
     actual fun quit() {
-        SDLInit.SDL_Quit()
+        Jni.quit()
     }
 
-    actual fun error(): String? = SDLError.SDL_GetError()?.takeIf { it.isNotEmpty() }
+    actual fun error(): String? = Jni.getError()?.takeIf { it.isNotEmpty() }
 
     actual fun clearError() {
-        SDLError.SDL_ClearError()
+        Jni.clearError()
     }
 
-    actual fun setError(message: String): Boolean = SDLError.SDL_SetError(message)
+    actual fun setError(message: String): Boolean = Jni.setError(message)
 
     actual fun version(): SDLVersion {
-        val num = LwjglSDLVersion.SDL_GetVersion()
+        val num = Jni.getVersion()
         return SDLVersion(
             major = num / 1000000,
             minor = (num / 1000) % 1000,
@@ -756,62 +568,62 @@ actual object SDL {
         )
     }
 
-    actual fun revision(): String? = LwjglSDLVersion.SDL_GetRevision()
+    actual fun revision(): String? = Jni.getRevision()
 
-    actual fun getTicks(): ULong = SDLTimer.SDL_GetTicks().toULong()
+    actual fun getTicks(): ULong = Jni.getTicks().toULong()
 
-    actual fun performanceCounter(): ULong = SDLTimer.SDL_GetPerformanceCounter().toULong()
+    actual fun performanceCounter(): ULong = Jni.performanceCounter().toULong()
 
-    actual fun performanceFrequency(): ULong = SDLTimer.SDL_GetPerformanceFrequency().toULong()
+    actual fun performanceFrequency(): ULong = Jni.performanceFrequency().toULong()
 
     actual fun delay(ms: Int) {
-        SDLTimer.SDL_Delay(ms)
+        Jni.delay(ms)
     }
 
     actual fun pollEvent(): SDLEvent? {
-        val event = SDL_Event.calloc()
-        try {
-            return if (SDLEvents.SDL_PollEvent(event)) event.toSDLEvent() else null
+        val event = Jni.eventAlloc()
+        return try {
+            if (Jni.pollEvent(event)) BorrowedJvmEventRaw(event).toSDLEvent() else null
         } finally {
-            event.free()
+            Jni.eventFree(event)
         }
     }
 
     actual fun waitEvent(): SDLEvent? {
-        val event = SDL_Event.calloc()
-        try {
-            return if (SDLEvents.SDL_WaitEvent(event)) event.toSDLEvent() else null
+        val event = Jni.eventAlloc()
+        return try {
+            if (Jni.waitEvent(event)) BorrowedJvmEventRaw(event).toSDLEvent() else null
         } finally {
-            event.free()
+            Jni.eventFree(event)
         }
     }
 
     actual fun pollEventRaw(): SDLEventRaw? {
-        val event = SDL_Event.calloc()
-        return if (SDLEvents.SDL_PollEvent(event)) {
+        val event = Jni.eventAlloc()
+        return if (Jni.pollEvent(event)) {
             JvmSDLEventRaw(event)
         } else {
-            event.free()
+            Jni.eventFree(event)
             null
         }
     }
 
     actual fun waitEventRaw(): SDLEventRaw? {
-        val event = SDL_Event.calloc()
-        return if (SDLEvents.SDL_WaitEvent(event)) {
+        val event = Jni.eventAlloc()
+        return if (Jni.waitEvent(event)) {
             JvmSDLEventRaw(event)
         } else {
-            event.free()
+            Jni.eventFree(event)
             null
         }
     }
 
     actual fun pumpEvents() {
-        SDLEvents.SDL_PumpEvents()
+        Jni.pumpEvents()
     }
 
     actual fun createWindow(title: String, width: Int, height: Int, flags: ULong): SDLWindow {
-        val ptr = SDLVideo.SDL_CreateWindow(title, width, height, flags.toLong())
+        val ptr = Jni.createWindow(title, width, height, flags.toLong())
         check(ptr != 0L) { "SDL_CreateWindow failed: ${SDL.error()}" }
         return JvmSDLWindow(ptr)
     }
@@ -820,268 +632,203 @@ actual object SDL {
         val windowPtr = (window as? JvmSDLWindow)?.ptr ?: throw IllegalArgumentException(
             "window is not a JVM SDL window",
         )
-        val ptr = if (name != null) {
-            SDLRender.SDL_CreateRenderer(windowPtr, name)
-        } else {
-            SDLRender.nSDL_CreateRenderer(windowPtr, 0L)
-        }
+        val ptr = Jni.createRenderer(windowPtr, name)
         check(ptr != 0L) { "SDL_CreateRenderer failed: ${SDL.error()}" }
         return JvmSDLRenderer(ptr)
     }
 
-    actual fun setHint(name: String, value: String): Boolean = SDLHints.SDL_SetHint(name, value)
+    actual fun setHint(name: String, value: String): Boolean = Jni.setHint(name, value)
 
-    actual fun getHint(name: String): String? = SDLHints.SDL_GetHint(name)
+    actual fun getHint(name: String): String? = Jni.getHint(name)
 
-    actual fun getClipboardText(): String? = SDLClipboard.SDL_GetClipboardText()
+    actual fun getClipboardText(): String? = Jni.getClipboardText()
 
-    actual fun setClipboardText(text: String): Boolean = SDLClipboard.SDL_SetClipboardText(text)
+    actual fun setClipboardText(text: String): Boolean = Jni.setClipboardText(text)
 
-    actual fun getNumVideoDrivers(): Int = SDLVideo.SDL_GetNumVideoDrivers()
+    actual fun getNumVideoDrivers(): Int = Jni.getNumVideoDrivers()
 
-    actual fun getVideoDriver(index: Int): String? = SDLVideo.SDL_GetVideoDriver(index)
+    actual fun getVideoDriver(index: Int): String? = Jni.getVideoDriver(index)
 
-    actual fun getCurrentVideoDriver(): String? = SDLVideo.SDL_GetCurrentVideoDriver()
+    actual fun getCurrentVideoDriver(): String? = Jni.getCurrentVideoDriver()
 
-    actual fun getNumAudioDrivers(): Int = SDLAudio.SDL_GetNumAudioDrivers()
+    actual fun getNumAudioDrivers(): Int = Jni.getNumAudioDrivers()
 
-    actual fun getAudioDriver(index: Int): String? = SDLAudio.SDL_GetAudioDriver(index)
+    actual fun getAudioDriver(index: Int): String? = Jni.getAudioDriver(index)
 
-    actual fun getCurrentAudioDriver(): String? = SDLAudio.SDL_GetCurrentAudioDriver()
+    actual fun getCurrentAudioDriver(): String? = Jni.getCurrentAudioDriver()
 
     actual fun textInputActive(windowId: Int): Boolean {
-        val window = SDLVideo.SDL_GetWindowFromID(windowId)
+        val window = Jni.getWindowFromID(windowId)
         if (window == 0L) return false
-        return SDLKeyboard.SDL_TextInputActive(window)
+        return Jni.textInputActive(window)
     }
 
     actual fun startTextInput(windowId: Int): Boolean {
-        val window = SDLVideo.SDL_GetWindowFromID(windowId)
+        val window = Jni.getWindowFromID(windowId)
         if (window == 0L) return false
-        return SDLKeyboard.SDL_StartTextInput(window)
+        return Jni.startTextInput(window)
     }
 
     actual fun stopTextInput(windowId: Int): Boolean {
-        val window = SDLVideo.SDL_GetWindowFromID(windowId)
+        val window = Jni.getWindowFromID(windowId)
         if (window == 0L) return false
-        return SDLKeyboard.SDL_StopTextInput(window)
+        return Jni.stopTextInput(window)
     }
 
     actual fun showSimpleMessageBox(title: String, message: String): Boolean =
-        SDLMessageBox.SDL_ShowSimpleMessageBox(0, title, message, 0L)
+        Jni.showSimpleMessageBox(title, message)
 
     // ==================== displays ====================
 
     actual val numDisplays: Int
-        get() = SDLVideo.SDL_GetDisplays()?.limit() ?: 0
+        get() = Jni.getDisplays()?.size ?: 0
 
     actual fun getDisplay(index: Int): SDLDisplay {
-        val displays = SDLVideo.SDL_GetDisplays()
+        val displays = Jni.getDisplays()
             ?: throw IllegalStateException("SDL_GetDisplays failed: ${SDL.error()}")
-        require(index in 0 until displays.limit()) { "display index out of range: $index" }
-        return JvmSDLDisplay(displays.get(index))
+        require(index in 0 until displays.size) { "display index out of range: $index" }
+        return JvmSDLDisplay(displays[index])
     }
 
     actual fun getPrimaryDisplay(): SDLDisplay =
-        JvmSDLDisplay(SDLVideo.SDL_GetPrimaryDisplay())
+        JvmSDLDisplay(Jni.getPrimaryDisplay())
 
     // ==================== renderer drivers ====================
 
     actual val numRenderDrivers: Int
-        get() = SDLRender.SDL_GetNumRenderDrivers()
+        get() = Jni.getNumRenderDrivers()
 
     actual fun getRenderDriver(index: Int): String? =
-        SDLRender.SDL_GetRenderDriver(index)
+        Jni.getRenderDriver(index)
 
     actual fun createWindowAndRenderer(
         title: String,
         width: Int,
         height: Int,
         flags: ULong,
-    ): Pair<SDLWindow, SDLRenderer> = MemoryStack.stackPush().use { stack ->
-        val window = stack.mallocPointer(1)
-        val renderer = stack.mallocPointer(1)
-        val ok = SDLRender.SDL_CreateWindowAndRenderer(title, width, height, flags.toLong(), window, renderer)
-        check(ok) { "SDL_CreateWindowAndRenderer failed: ${SDL.error()}" }
-        Pair(JvmSDLWindow(window.get(0)), JvmSDLRenderer(renderer.get(0)))
+    ): Pair<SDLWindow, SDLRenderer> {
+        val result = Jni.createWindowAndRenderer(title, width, height, flags.toLong())
+        check(result != null) { "SDL_CreateWindowAndRenderer failed: ${SDL.error()}" }
+        return Pair(JvmSDLWindow(result[0]), JvmSDLRenderer(result[1]))
     }
 
     // ==================== pixels ====================
 
     actual fun getPixelFormatName(format: Int): String? =
-        SDLPixels.SDL_GetPixelFormatName(format)
+        Jni.getPixelFormatName(format)
 
-    actual fun mapRGB(format: Int, r: Int, g: Int, b: Int): Int {
-        val details = SDLPixels.SDL_GetPixelFormatDetails(format)
-            ?: throw IllegalStateException("SDL_GetPixelFormatDetails failed")
-        return SDLPixels.SDL_MapRGB(details, null, r.toByte(), g.toByte(), b.toByte())
-    }
+    actual fun mapRGB(format: Int, r: Int, g: Int, b: Int): Int =
+        Jni.mapRGB(format, r, g, b)
 
-    actual fun mapRGBA(format: Int, r: Int, g: Int, b: Int, a: Int): Int {
-        val details = SDLPixels.SDL_GetPixelFormatDetails(format)
-            ?: throw IllegalStateException("SDL_GetPixelFormatDetails failed")
-        return SDLPixels.SDL_MapRGBA(details, null, r.toByte(), g.toByte(), b.toByte(), a.toByte())
-    }
+    actual fun mapRGBA(format: Int, r: Int, g: Int, b: Int, a: Int): Int =
+        Jni.mapRGBA(format, r, g, b, a)
 
-    actual fun getRGBA(format: Int, pixel: Int): SDLColor = MemoryStack.stackPush().use { stack ->
-        val details = SDLPixels.SDL_GetPixelFormatDetails(format)
+    actual fun getRGBA(format: Int, pixel: Int): SDLColor {
+        val c = Jni.getRGBA(format, pixel)
             ?: throw IllegalStateException("SDL_GetPixelFormatDetails failed")
-        val r = stack.malloc(1)
-        val g = stack.malloc(1)
-        val b = stack.malloc(1)
-        val a = stack.malloc(1)
-        SDLPixels.SDL_GetRGBA(pixel, details, null, r, g, b, a)
-        SDLColor(
-            r.get(0).toInt() and 0xff,
-            g.get(0).toInt() and 0xff,
-            b.get(0).toInt() and 0xff,
-            a.get(0).toInt() and 0xff,
-        )
+        return SDLColor(c[0], c[1], c[2], c[3])
     }
 
     // ==================== surfaces ====================
 
     actual fun createSurface(width: Int, height: Int, format: Int): SDLSurface {
-        val surface = LwjglSDLSurface.SDL_CreateSurface(width, height, format)
-            ?: throw IllegalStateException("SDL_CreateSurface failed: ${SDL.error()}")
+        val surface = Jni.createSurface(width, height, format)
+        check(surface != 0L) { "SDL_CreateSurface failed: ${SDL.error()}" }
         return JvmSDLSurface(surface, owned = true)
     }
 
     actual fun loadBMP(path: String): SDLSurface {
-        val surface = LwjglSDLSurface.SDL_LoadBMP(path)
-            ?: throw IllegalStateException("SDL_LoadBMP failed: ${SDL.error()}")
+        val surface = Jni.loadBMP(path)
+        check(surface != 0L) { "SDL_LoadBMP failed: ${SDL.error()}" }
         return JvmSDLSurface(surface, owned = true)
     }
 
     // ==================== audio ====================
 
     actual val audioPlaybackDevices: List<Int>
-        get() {
-            val devices = SDLAudio.SDL_GetAudioPlaybackDevices()
-            return if (devices == null) emptyList() else (0 until devices.limit()).map { devices.get(it) }
-        }
+        get() = Jni.audioPlaybackDevices()?.toList() ?: emptyList()
 
     actual val audioRecordingDevices: List<Int>
-        get() {
-            val devices = SDLAudio.SDL_GetAudioRecordingDevices()
-            return if (devices == null) emptyList() else (0 until devices.limit()).map { devices.get(it) }
-        }
+        get() = Jni.audioRecordingDevices()?.toList() ?: emptyList()
 
     actual fun getAudioDeviceName(deviceId: Int): String? =
-        SDLAudio.SDL_GetAudioDeviceName(deviceId)
+        Jni.getAudioDeviceName(deviceId)
 
     actual fun openAudioDevice(deviceId: Int, spec: SDLAudioSpec): SDLAudioDevice {
-        val specStruct = SDL_AudioSpec.calloc()
-        try {
-            specStruct.format(spec.format).channels(spec.channels).freq(spec.freq)
-            val id = SDLAudio.SDL_OpenAudioDevice(deviceId, specStruct)
-            check(id != 0) { "SDL_OpenAudioDevice failed: ${SDL.error()}" }
-            return JvmSDLAudioDevice(id, spec, recording = false)
-        } finally {
-            specStruct.free()
-        }
+        val id = Jni.openAudioDevice(deviceId, spec.format, spec.channels, spec.freq)
+        check(id != 0) { "SDL_OpenAudioDevice failed: ${SDL.error()}" }
+        return JvmSDLAudioDevice(id, spec, recording = false)
     }
 
     actual fun openAudioDeviceStream(deviceId: Int, spec: SDLAudioSpec): SDLAudioStream {
-        val specStruct = SDL_AudioSpec.calloc()
-        try {
-            specStruct.format(spec.format).channels(spec.channels).freq(spec.freq)
-            val ptr = SDLAudio.SDL_OpenAudioDeviceStream(deviceId, specStruct, null, 0L)
-                ?: throw IllegalStateException("SDL_OpenAudioDeviceStream failed: ${SDL.error()}")
-            return JvmSDLAudioStream(ptr)
-        } finally {
-            specStruct.free()
-        }
+        val ptr = Jni.openAudioDeviceStream(deviceId, spec.format, spec.channels, spec.freq)
+        check(ptr != 0L) { "SDL_OpenAudioDeviceStream failed: ${SDL.error()}" }
+        return JvmSDLAudioStream(ptr)
     }
 
     actual fun createAudioStream(srcSpec: SDLAudioSpec, dstSpec: SDLAudioSpec): SDLAudioStream {
-        val srcStruct = SDL_AudioSpec.calloc()
-        val dstStruct = SDL_AudioSpec.calloc()
-        try {
-            srcStruct.format(srcSpec.format).channels(srcSpec.channels).freq(srcSpec.freq)
-            dstStruct.format(dstSpec.format).channels(dstSpec.channels).freq(dstSpec.freq)
-            val ptr = SDLAudio.SDL_CreateAudioStream(srcStruct, dstStruct)
-                ?: throw IllegalStateException("SDL_CreateAudioStream failed: ${SDL.error()}")
-            return JvmSDLAudioStream(ptr)
-        } finally {
-            srcStruct.free()
-            dstStruct.free()
-        }
+        val ptr = Jni.createAudioStream(
+            srcSpec.format, srcSpec.channels, srcSpec.freq,
+            dstSpec.format, dstSpec.channels, dstSpec.freq,
+        )
+        check(ptr != 0L) { "SDL_CreateAudioStream failed: ${SDL.error()}" }
+        return JvmSDLAudioStream(ptr)
     }
 
     actual fun pauseAudioDevice(deviceId: Int) {
-        if (!SDLAudio.SDL_AudioDevicePaused(deviceId)) {
-            SDLAudio.SDL_PauseAudioDevice(deviceId)
-        }
+        Jni.pauseAudioDevice(deviceId)
     }
 
     actual fun resumeAudioDevice(deviceId: Int) {
-        if (SDLAudio.SDL_AudioDevicePaused(deviceId)) {
-            SDLAudio.SDL_PauseAudioDevice(deviceId)
-        }
+        Jni.resumeAudioDevice(deviceId)
     }
 
     actual fun isAudioDevicePaused(deviceId: Int): Boolean =
-        SDLAudio.SDL_AudioDevicePaused(deviceId)
+        Jni.audioDevicePaused(deviceId)
 
-    actual fun loadWAV(path: String): SDLAudioData? = MemoryStack.stackPush().use { stack ->
-        val spec = SDL_AudioSpec.calloc()
-        try {
-            val buffer = stack.mallocPointer(1)
-            val length = stack.mallocInt(1)
-            val result = SDLAudio.SDL_LoadWAV(path, spec, buffer, length)
-            if (result == null || buffer.get(0) == 0L) {
-                null
-            } else {
-                val data = MemoryUtil.memByteBuffer(buffer.get(0), length.get(0))
-                val out = ByteArray(length.get(0))
-                data.get(out)
-                SDLAudioData(
-                    spec = SDLAudioSpec(format = spec.format(), channels = spec.channels(), freq = spec.freq()),
-                    data = out,
-                )
-            }
-        } finally {
-            spec.free()
-        }
+    actual fun loadWAV(path: String): SDLAudioData? {
+        val outSpec = IntArray(3)
+        val data = Jni.loadWav(path, outSpec) ?: return null
+        return SDLAudioData(
+            spec = SDLAudioSpec(format = outSpec[0], channels = outSpec[1], freq = outSpec[2]),
+            data = data,
+        )
     }
 
     // ==================== input focus ====================
 
     actual val keyboardFocusWindowId: Int?
-        get() = SDLKeyboard.SDL_GetKeyboardFocus()?.let { SDLVideo.SDL_GetWindowID(it) }
+        get() = Jni.getKeyboardFocus().takeIf { it != 0L }?.let { Jni.getWindowID(it) }
 
     actual val mouseFocusWindowId: Int?
-        get() = SDLMouse.SDL_GetMouseFocus()?.let { SDLVideo.SDL_GetWindowID(it) }
+        get() = Jni.getMouseFocus().takeIf { it != 0L }?.let { Jni.getWindowID(it) }
 
     // ==================== touch ====================
 
     actual val touchDevices: List<Int>
-        get() {
-            val devices = org.lwjgl.sdl.SDLTouch.SDL_GetTouchDevices() ?: return emptyList()
-            return (0 until devices.limit()).map { devices.get(it).toInt() }
-        }
+        get() = Jni.getTouchDevices()?.toList() ?: emptyList()
 
     actual fun getTouchDeviceName(touchId: Int): String? =
-        org.lwjgl.sdl.SDLTouch.SDL_GetTouchDeviceName(touchId.toLong())
+        Jni.getTouchDeviceName(touchId)
 
     actual fun getTouchDeviceType(touchId: Int): Int =
-        org.lwjgl.sdl.SDLTouch.SDL_GetTouchDeviceType(touchId.toLong())
+        Jni.getTouchDeviceType(touchId)
 
     actual fun getTouchFingers(touchId: Int): List<SDLTouchFinger> {
-        val fingers = org.lwjgl.sdl.SDLTouch.SDL_GetTouchFingers(touchId.toLong()) ?: return emptyList()
+        val data = Jni.getTouchFingers(touchId) ?: return emptyList()
         val result = mutableListOf<SDLTouchFinger>()
-        for (i in 0 until fingers.limit()) {
-            val f = org.lwjgl.sdl.SDL_Finger.create(fingers.get(i)) ?: continue
+        var i = 0
+        while (i < data.size) {
             result.add(
                 SDLTouchFinger(
-                    id = f.id().toULong(),
-                    x = f.x(),
-                    y = f.y(),
-                    pressure = f.pressure(),
+                    id = data[i].toULong(),
+                    x = Float.fromBits(data[i + 1].toInt()),
+                    y = Float.fromBits(data[i + 2].toInt()),
+                    pressure = Float.fromBits(data[i + 3].toInt()),
                     down = true,
                 ),
             )
+            i += 4
         }
         return result
     }
@@ -1091,39 +838,35 @@ actual object SDL {
     actual fun addEventWatch(filter: (SDLEventRaw) -> Boolean): Boolean {
         val id = eventWatchNextId.getAndIncrement()
         eventWatchCallbacks[id] = filter
-        val cb = SDL_EventFilterAdapter(id)
-        eventWatchAdapters[id] = cb
-        return if (org.lwjgl.sdl.SDLEvents.SDL_AddEventWatch(cb, 0L)) {
+        return if (Jni.addEventWatch(id)) {
             true
         } else {
             eventWatchCallbacks.remove(id)
-            eventWatchAdapters.remove(id)
             false
         }
     }
 
     actual fun removeEventWatch(filter: (SDLEventRaw) -> Boolean) {
-        // LWJGL 3.4.x has no SDL_DelEventWatch; stop dispatching to the
-        // callback instead (the native adapter stays registered but idle).
         val id = eventWatchCallbacks.entries.firstOrNull { it.value === filter }?.key ?: return
         eventWatchCallbacks.remove(id)
+        Jni.removeEventWatch(id)
     }
 
     actual fun setEventEnabled(type: Int, enabled: Boolean) {
-        org.lwjgl.sdl.SDLEvents.SDL_SetEventEnabled(type, enabled)
+        Jni.setEventEnabled(type, enabled)
     }
 
     actual fun eventEnabled(type: Int): Boolean =
-        org.lwjgl.sdl.SDLEvents.SDL_EventEnabled(type)
+        Jni.eventEnabled(type)
 
     actual fun flushEvents(minType: Int, maxType: Int) {
-        org.lwjgl.sdl.SDLEvents.SDL_FlushEvents(minType, maxType)
+        Jni.flushEvents(minType, maxType)
     }
 
     actual fun pushEvent(event: SDLEventRaw): Boolean {
         val raw = event as? JvmSDLEventRaw
             ?: throw IllegalArgumentException("event is not a JVM SDL event")
-        return org.lwjgl.sdl.SDLEvents.SDL_PushEvent(raw.event)
+        return Jni.pushEvent(raw.ptr)
     }
 
     // ==================== file dialogs ====================
@@ -1181,113 +924,85 @@ actual object SDL {
     ) {
         val id = dialogNextId.getAndIncrement()
         dialogCallbacks[id] = callback
-        val cb = SDL_DialogFileCallbackAdapter(id)
-        dialogAdapters[id] = cb
-        MemoryStack.stackPush().use { stack ->
-            val window = windowId?.let { SDLVideo.SDL_GetWindowFromID(it) } ?: 0L
-            val filterBuffer = if (filters.isEmpty()) {
-                null
-            } else {
-                org.lwjgl.sdl.SDL_DialogFileFilter.calloc(filters.size, stack).also { buffer ->
-                    for (i in filters.indices) {
-                        buffer.get(i).name(stack.UTF8(filters[i].name)).pattern(stack.UTF8(filters[i].pattern))
-                    }
-                }
+        val window = windowId?.let { Jni.getWindowFromID(it) } ?: 0L
+        val names = filters.map { it.name }.toTypedArray()
+        val patterns = filters.map { it.pattern }.toTypedArray()
+        try {
+            when (dialogType) {
+                DIALOG_OPEN_FILE -> Jni.showOpenFileDialog(id, window, names, patterns, defaultLocation, allowMultiple)
+                DIALOG_SAVE_FILE -> Jni.showSaveFileDialog(id, window, names, patterns, defaultLocation)
+                else -> Jni.showOpenFolderDialog(id, window, defaultLocation, allowMultiple)
             }
-            try {
-                when (dialogType) {
-                    DIALOG_OPEN_FILE -> SDLDialog.SDL_ShowOpenFileDialog(cb, 0L, window, filterBuffer, defaultLocation, allowMultiple)
-                    DIALOG_SAVE_FILE -> SDLDialog.SDL_ShowSaveFileDialog(cb, 0L, window, filterBuffer, defaultLocation)
-                    else -> SDLDialog.SDL_ShowOpenFolderDialog(cb, 0L, window, defaultLocation, allowMultiple)
-                }
-            } catch (e: Throwable) {
-                dialogCallbacks.remove(id)
-                throw e
-            }
+        } catch (t: Throwable) {
+            dialogCallbacks.remove(id)
+            throw t
         }
     }
 
     // ==================== keyboard ====================
 
     actual val keyboardState: ByteArray
-        get() {
-            val state = SDLKeyboard.SDL_GetKeyboardState()
-            if (state == null) return ByteArray(0)
-            val out = ByteArray(state.limit())
-            state.rewind()
-            state.get(out)
-            return out
-        }
+        get() = Jni.keyboardState() ?: ByteArray(0)
 
     actual val modState: Int
-        get() = SDLKeyboard.SDL_GetModState().toInt()
+        get() = Jni.modState()
 
     actual fun setModState(modState: Int) {
-        SDLKeyboard.SDL_SetModState(modState.toShort())
+        Jni.setModState(modState)
     }
 
     actual fun getKeyFromScancode(scancode: Int): Int =
-        SDLKeyboard.SDL_GetKeyFromScancode(scancode, 0, false)
+        Jni.getKeyFromScancode(scancode)
 
     actual fun getScancodeFromKey(keycode: Int): Int =
-        SDLKeyboard.SDL_GetScancodeFromKey(keycode, null)
+        Jni.getScancodeFromKey(keycode)
 
     actual fun getKeyName(keycode: Int): String? =
-        SDLKeyboard.SDL_GetKeyName(keycode)
+        Jni.getKeyName(keycode)
 
     actual fun getScancodeName(scancode: Int): String? =
-        SDLKeyboard.SDL_GetScancodeName(scancode)
+        Jni.getScancodeName(scancode)
 
     // ==================== mouse ====================
 
     actual val mouseState: SDLMouseState
-        get() = MemoryStack.stackPush().use { stack ->
-            val x = stack.mallocFloat(1)
-            val y = stack.mallocFloat(1)
-            val buttons = SDLMouse.SDL_GetMouseState(x, y)
-            SDLMouseState(x.get(0), y.get(0), buttons)
+        get() {
+            val s = Jni.mouseState()
+            return SDLMouseState(s[0], s[1], s[2].toInt())
         }
 
     actual val globalMouseState: SDLMouseState
-        get() = MemoryStack.stackPush().use { stack ->
-            val x = stack.mallocFloat(1)
-            val y = stack.mallocFloat(1)
-            val buttons = SDLMouse.SDL_GetGlobalMouseState(x, y)
-            SDLMouseState(x.get(0), y.get(0), buttons)
+        get() {
+            val s = Jni.globalMouseState()
+            return SDLMouseState(s[0], s[1], s[2].toInt())
         }
 
     actual fun warpMouseInWindow(windowId: Int, x: Float, y: Float) {
-        val window = SDLVideo.SDL_GetWindowFromID(windowId) ?: return
-        SDLMouse.SDL_WarpMouseInWindow(window, x, y)
+        val window = Jni.getWindowFromID(windowId) ?: return
+        Jni.warpMouseInWindow(window, x, y)
     }
 
     actual fun captureMouse(enabled: Boolean): Boolean =
-        SDLMouse.SDL_CaptureMouse(enabled)
+        Jni.captureMouse(enabled)
 
-    actual fun showCursor(): Boolean = SDLMouse.SDL_ShowCursor()
+    actual fun showCursor(): Boolean = Jni.showCursor()
 
     // ==================== joystick / gamepad ====================
 
     actual val joysticks: List<Int>
-        get() {
-            val ids = LwjglSDLJoystick.SDL_GetJoysticks()
-            return if (ids == null) emptyList() else (0 until ids.limit()).map { ids.get(it) }
-        }
+        get() = Jni.getJoysticks()?.toList() ?: emptyList()
 
     actual fun openJoystick(id: Int): SDLJoystick {
-        val ptr = LwjglSDLJoystick.SDL_OpenJoystick(id)
+        val ptr = Jni.openJoystick(id)
         check(ptr != 0L) { "SDL_OpenJoystick failed: ${SDL.error()}" }
         return JvmSDLJoystick(ptr)
     }
 
     actual val gamepads: List<Int>
-        get() {
-            val ids = LwjglSDLGamepad.SDL_GetGamepads()
-            return if (ids == null) emptyList() else (0 until ids.limit()).map { ids.get(it) }
-        }
+        get() = Jni.getGamepads()?.toList() ?: emptyList()
 
     actual fun openGamepad(id: Int): SDLGamepad {
-        val ptr = LwjglSDLGamepad.SDL_OpenGamepad(id)
+        val ptr = Jni.openGamepad(id)
         check(ptr != 0L) { "SDL_OpenGamepad failed: ${SDL.error()}" }
         return JvmSDLGamepad(ptr)
     }
@@ -1295,39 +1010,37 @@ actual object SDL {
     // ==================== filesystem / misc ====================
 
     actual val basePath: String?
-        get() = SDLFileSystem.SDL_GetBasePath()
+        get() = Jni.basePath()
 
     actual fun getPrefPath(orgName: String, appName: String): String? =
-        SDLFileSystem.SDL_GetPrefPath(orgName, appName)
+        Jni.getPrefPath(orgName, appName)
 
     actual fun getUserFolder(folder: Int): String? =
-        SDLFileSystem.SDL_GetUserFolder(folder)
+        Jni.getUserFolder(folder)
 
     actual fun createDirectory(path: String): Boolean =
-        SDLFileSystem.SDL_CreateDirectory(path)
+        Jni.createDirectory(path)
 
     actual fun removePath(path: String): Boolean =
-        SDLFileSystem.SDL_RemovePath(path)
+        Jni.removePath(path)
 
     actual fun renamePath(oldPath: String, newPath: String): Boolean =
-        SDLFileSystem.SDL_RenamePath(oldPath, newPath)
+        Jni.renamePath(oldPath, newPath)
 
     actual val powerInfo: SDLPowerInfo
-        get() = MemoryStack.stackPush().use { stack ->
-            val seconds = stack.mallocInt(1)
-            val percent = stack.mallocInt(1)
-            val state = SDLPower.SDL_GetPowerInfo(seconds, percent)
-            SDLPowerInfo(state, percent.get(0), seconds.get(0))
+        get() {
+            val info = Jni.powerInfo()
+            return SDLPowerInfo(info[0], info[1], info[2])
         }
 
     actual fun openURL(url: String): Boolean =
-        SDLMisc.SDL_OpenURL(url)
+        Jni.openURL(url)
 
     actual val hasClipboardText: Boolean
-        get() = SDLClipboard.SDL_HasClipboardText()
+        get() = Jni.hasClipboardText()
 
     actual fun getHintBoolean(name: String, defaultValue: Boolean): Boolean =
-        SDLHints.SDL_GetHintBoolean(name, defaultValue)
+        Jni.getHintBoolean(name, defaultValue)
 
     actual fun showMessageBox(
         flags: Int,
@@ -1335,218 +1048,159 @@ actual object SDL {
         message: String,
         buttons: List<SDLMessageBoxButton>,
     ): Int {
-        val data = SDL_MessageBoxData.calloc()
-        val buttonData = SDL_MessageBoxButtonData.calloc(buttons.size)
-        val buttonId = MemoryStack.stackGet().mallocInt(1)
-        try {
-            data.flags(flags)
-            data.title(MemoryUtil.memUTF8(title))
-            data.message(MemoryUtil.memUTF8(message))
-            for (i in buttons.indices) {
-                val b = buttons[i]
-                buttonData.get(i).flags(b.flags).buttonID(b.id).text(MemoryUtil.memUTF8(b.text))
-            }
-            data.buttons(buttonData)
-            val ok = SDLMessageBox.SDL_ShowMessageBox(data, buttonId)
-            check(ok) { "SDL_ShowMessageBox failed: ${SDL.error()}" }
-            return buttonId.get(0)
-        } finally {
-            data.free()
-            buttonData.free()
-        }
+        val buttonFlags = IntArray(buttons.size) { buttons[it].flags }
+        val buttonIds = IntArray(buttons.size) { buttons[it].id }
+        val buttonTexts = buttons.map { it.text }.toTypedArray()
+        val clicked = Jni.showMessageBox(flags, title, message, buttonFlags, buttonIds, buttonTexts)
+        check(clicked >= 0) { "SDL_ShowMessageBox failed: ${SDL.error()}" }
+        return clicked
     }
 
     // ==================== OpenGL ====================
 
     actual fun glLoadLibrary(path: String?): Boolean =
-        if (path == null) {
-            SDLVideo.nSDL_GL_LoadLibrary(0L)
-        } else {
-            SDLVideo.SDL_GL_LoadLibrary(path)
-        }
+        Jni.glLoadLibrary(path)
 
     actual fun glUnloadLibrary() {
-        SDLVideo.SDL_GL_UnloadLibrary()
+        Jni.glUnloadLibrary()
     }
 
     actual fun glGetProcAddress(proc: String): ULong =
-        SDLVideo.SDL_GL_GetProcAddress(proc).toULong()
+        Jni.glGetProcAddress(proc).toULong()
 
     actual fun glExtensionSupported(extension: String): Boolean =
-        SDLVideo.SDL_GL_ExtensionSupported(extension)
+        Jni.glExtensionSupported(extension)
 
     actual fun glResetAttributes() {
-        SDLVideo.SDL_GL_ResetAttributes()
+        Jni.glResetAttributes()
     }
 
     actual fun glSetAttribute(attr: Int, value: Int): Boolean =
-        SDLVideo.SDL_GL_SetAttribute(attr, value)
+        Jni.glSetAttribute(attr, value)
 
-    actual fun glGetAttribute(attr: Int): Int? = MemoryStack.stackPush().use { stack ->
-        val value = stack.mallocInt(1)
-        if (SDLVideo.SDL_GL_GetAttribute(attr, value)) {
-            value.get(0)
-        } else {
-            null
-        }
-    }
+    actual fun glGetAttribute(attr: Int): Int? = Jni.glGetAttribute(attr)?.get(0)
 
     actual fun glCreateContext(windowId: Int): ULong {
-        val window = SDLVideo.SDL_GetWindowFromID(windowId) ?: return 0uL
-        return SDLVideo.SDL_GL_CreateContext(window).toULong()
+        val window = Jni.getWindowFromID(windowId) ?: return 0uL
+        return Jni.glCreateContext(window).toULong()
     }
 
     actual fun glMakeCurrent(windowId: Int, context: ULong): Boolean {
-        val window = SDLVideo.SDL_GetWindowFromID(windowId) ?: return false
-        return SDLVideo.SDL_GL_MakeCurrent(window, context.toLong())
+        val window = Jni.getWindowFromID(windowId) ?: return false
+        return Jni.glMakeCurrent(window, context.toLong())
     }
 
     actual val glCurrentWindow: Int?
-        get() = SDLVideo.SDL_GL_GetCurrentWindow().takeIf { it != 0L }?.let {
-            SDLVideo.SDL_GetWindowID(it)
-        }
+        get() = Jni.glGetCurrentWindow().takeIf { it != 0L }?.let { Jni.getWindowID(it) }
 
     actual val glCurrentContext: ULong
-        get() = SDLVideo.SDL_GL_GetCurrentContext().toULong()
+        get() = Jni.glGetCurrentContext().toULong()
 
     actual fun glSetSwapInterval(interval: Int): Boolean =
-        SDLVideo.SDL_GL_SetSwapInterval(interval)
+        Jni.glSetSwapInterval(interval)
 
     actual val glSwapInterval: Int?
-        get() = MemoryStack.stackPush().use { stack ->
-            val interval = stack.mallocInt(1)
-            if (SDLVideo.SDL_GL_GetSwapInterval(interval)) {
-                interval.get(0)
-            } else {
-                null
-            }
-        }
+        get() = Jni.glGetSwapInterval()?.get(0)
 
     actual fun glSwapWindow(windowId: Int): Boolean {
-        val window = SDLVideo.SDL_GetWindowFromID(windowId) ?: return false
-        return SDLVideo.SDL_GL_SwapWindow(window)
+        val window = Jni.getWindowFromID(windowId) ?: return false
+        return Jni.glSwapWindow(window)
     }
 
     actual fun glDestroyContext(context: ULong) {
         if (context != 0uL) {
-            SDLVideo.SDL_GL_DestroyContext(context.toLong())
+            Jni.glDestroyContext(context.toLong())
         }
     }
 
     // ==================== Vulkan ====================
 
     actual fun vulkanLoadLibrary(path: String?): Boolean =
-        if (path == null) {
-            SDLVulkan.nSDL_Vulkan_LoadLibrary(0L)
-        } else {
-            SDLVulkan.SDL_Vulkan_LoadLibrary(path)
-        }
+        Jni.vulkanLoadLibrary(path)
 
     actual fun vulkanUnloadLibrary() {
-        SDLVulkan.SDL_Vulkan_UnloadLibrary()
+        Jni.vulkanUnloadLibrary()
     }
 
     actual val vulkanGetVkGetInstanceProcAddr: ULong
-        get() = SDLVulkan.SDL_Vulkan_GetVkGetInstanceProcAddr().toULong()
+        get() = Jni.vulkanGetVkGetInstanceProcAddr().toULong()
 
     actual val vulkanInstanceExtensions: List<String>
-        get() {
-            val names = SDLVulkan.SDL_Vulkan_GetInstanceExtensions() ?: return emptyList()
-            return (0 until names.limit()).mapNotNull { names.get(it).let { p -> MemoryUtil.memUTF8(p) } }
-        }
+        get() = Jni.vulkanGetInstanceExtensions()?.toList() ?: emptyList()
 
-    actual fun vulkanCreateSurface(windowId: Int, instance: ULong): ULong = MemoryStack.stackPush().use { stack ->
-        val window = SDLVideo.SDL_GetWindowFromID(windowId) ?: return@use 0uL
-        val surface = stack.mallocLong(1)
-        val ok = SDLVulkan.nSDL_Vulkan_CreateSurface(window, instance.toLong(), 0L, MemoryUtil.memAddress(surface))
-        if (ok) surface.get(0).toULong() else 0uL
+    actual fun vulkanCreateSurface(windowId: Int, instance: ULong): ULong {
+        val window = Jni.getWindowFromID(windowId) ?: return 0uL
+        return Jni.vulkanCreateSurface(window, instance.toLong()).toULong()
     }
 
     actual fun vulkanDestroySurface(instance: ULong, surface: ULong) {
         if (surface != 0uL) {
-            SDLVulkan.nSDL_Vulkan_DestroySurface(instance.toLong(), surface.toLong(), 0L)
+            Jni.vulkanDestroySurface(instance.toLong(), surface.toLong())
         }
     }
 
-    actual fun vulkanGetPresentationSupport(instance: ULong, physicalDevice: ULong, queueFamilyIndex: Int): Boolean {
-        // LWJGL's typed overload requires building VkInstance/VkPhysicalDevice
-        // capabilities objects; call the native function pointer directly.
-        val functions = Class.forName("org.lwjgl.sdl.SDLVulkan\$Functions")
-        val field = functions.getDeclaredField("Vulkan_GetPresentationSupport")
-        field.isAccessible = true
-        val fn = field.getLong(null)
-        return JNI.invokePPZ(instance.toLong(), physicalDevice.toLong(), queueFamilyIndex, fn)
-    }
+    actual fun vulkanGetPresentationSupport(instance: ULong, physicalDevice: ULong, queueFamilyIndex: Int): Boolean =
+        Jni.vulkanGetPresentationSupport(instance.toLong(), physicalDevice.toLong(), queueFamilyIndex)
 }
 
 // =========================================================================
-// JVM (LWJGL) display
+// JVM (JNI) display
 // =========================================================================
-
-private fun SDL_DisplayMode.toCommon(): SDLDisplayMode =
-    SDLDisplayMode(
-        format = format(),
-        width = w(),
-        height = h(),
-        refreshRate = refresh_rate(),
-        pixelDensity = pixel_density(),
-    )
 
 internal class JvmSDLDisplay(override val id: Int) : SDLDisplay {
 
     override val name: String?
-        get() = SDLVideo.SDL_GetDisplayName(id)
+        get() = Jni.getDisplayName(id)
 
     override val bounds: SDLRect
         get() {
-            val r = SDL_Rect.calloc()
-            try {
-                SDLVideo.SDL_GetDisplayBounds(id, r)
-                return SDLRect(r.x(), r.y(), r.w(), r.h())
-            } finally {
-                r.free()
-            }
+            val r = Jni.getDisplayBounds(id)
+            return SDLRect(r[0], r[1], r[2], r[3])
         }
 
     override val usableBounds: SDLRect
         get() {
-            val r = SDL_Rect.calloc()
-            try {
-                SDLVideo.SDL_GetDisplayUsableBounds(id, r)
-                return SDLRect(r.x(), r.y(), r.w(), r.h())
-            } finally {
-                r.free()
-            }
+            val r = Jni.getDisplayUsableBounds(id)
+            return SDLRect(r[0], r[1], r[2], r[3])
         }
 
     override val currentMode: SDLDisplayMode
-        get() = SDLVideo.SDL_GetCurrentDisplayMode(id)?.toCommon()
+        get() = Jni.getCurrentDisplayMode(id)?.toCommon()
             ?: throw IllegalStateException("SDL_GetCurrentDisplayMode failed")
 
     override val desktopMode: SDLDisplayMode
-        get() = SDLVideo.SDL_GetDesktopDisplayMode(id)?.toCommon()
+        get() = Jni.getDesktopDisplayMode(id)?.toCommon()
             ?: throw IllegalStateException("SDL_GetDesktopDisplayMode failed")
 
     override val primary: Boolean
-        get() = SDLVideo.SDL_GetPrimaryDisplay() == id
+        get() = Jni.getPrimaryDisplay() == id
 }
 
+private fun FloatArray.toCommon(): SDLDisplayMode =
+    SDLDisplayMode(
+        format = this[0].toInt(),
+        width = this[1].toInt(),
+        height = this[2].toInt(),
+        refreshRate = this[3],
+        pixelDensity = this[4],
+    )
+
 // =========================================================================
-// JVM (LWJGL) texture
+// JVM (JNI) texture
 // =========================================================================
 
 internal class JvmSDLTexture internal constructor(
-    texture: SDL_Texture?,
+    ptr: Long,
     internal val renderer: JvmSDLRenderer,
 ) : SDLTexture {
 
-    internal var texture: SDL_Texture? = texture
+    internal var texture: Long = ptr
 
     override val ptr: Long
-        get() = texture?.address() ?: 0L
+        get() = texture
 
-    private fun check(): SDL_Texture =
-        texture ?: throw IllegalStateException("SDL texture is closed")
+    private fun check(): Long =
+        texture.also { if (it == 0L) throw IllegalStateException("SDL texture is closed") }
 
     override val format: Int
         get() = throw UnsupportedOperationException("texture format is not queryable")
@@ -1555,214 +1209,161 @@ internal class JvmSDLTexture internal constructor(
         get() = throw UnsupportedOperationException("texture access is not queryable")
 
     override val size: SDLFloatPoint
-        get() = MemoryStack.stackPush().use { stack ->
-            val w = stack.mallocFloat(1)
-            val h = stack.mallocFloat(1)
-            SDLRender.SDL_GetTextureSize(check(), w, h)
-            SDLFloatPoint(w.get(0), h.get(0))
+        get() {
+            val s = Jni.getTextureSize(check())
+            return SDLFloatPoint(s[0], s[1])
         }
 
     override var colorMod: SDLColor
         get() = throw UnsupportedOperationException("texture color mod is not queryable")
         set(value) {
-            SDLRender.SDL_SetTextureColorMod(check(), value.r.toByte(), value.g.toByte(), value.b.toByte())
+            Jni.setTextureColorMod(check(), value.r, value.g, value.b)
         }
 
     override var alphaMod: Int
         get() = throw UnsupportedOperationException("texture alpha mod is not queryable")
         set(value) {
-            SDLRender.SDL_SetTextureAlphaMod(check(), value.toByte())
+            Jni.setTextureAlphaMod(check(), value)
         }
 
     override var blendMode: Int
         get() = throw UnsupportedOperationException("texture blend mode is not queryable")
         set(value) {
-            SDLRender.SDL_SetTextureBlendMode(check(), value)
+            Jni.setTextureBlendMode(check(), value)
         }
 
     override var scaleMode: Int
         get() = throw UnsupportedOperationException("texture scale mode is not queryable")
         set(value) {
-            SDLRender.SDL_SetTextureScaleMode(check(), value)
+            Jni.setTextureScaleMode(check(), value)
         }
 
     override fun update(rect: SDLRect?, pixels: ByteArray, pitch: Int): Boolean {
-        val rectStruct = rect?.let {
-            SDL_Rect.calloc().also { r -> r.x(it.x).y(it.y).w(it.width).h(it.height) }
-        }
-        val buffer = MemoryUtil.memAlloc(pixels.size)
-        try {
-            buffer.put(pixels).flip()
-            return SDLRender.SDL_UpdateTexture(check(), rectStruct, buffer, pitch)
-        } finally {
-            rectStruct?.free()
-            MemoryUtil.memFree(buffer)
-        }
+        return Jni.updateTexture(
+            check(),
+            rect?.let { intArrayOf(it.x, it.y, it.width, it.height) },
+            pixels,
+            pitch,
+        )
     }
 
-    override fun lock(rect: SDLRect?): SDLTextureLock? = MemoryStack.stackPush().use { stack ->
-        val rectStruct = rect?.let {
-            SDL_Rect.calloc().also { r -> r.x(it.x).y(it.y).w(it.width).h(it.height) }
-        }
-        val pixelPtr = stack.mallocPointer(1)
-        val pitch = stack.mallocInt(1)
-        try {
-            val ok = SDLRender.SDL_LockTexture(check(), rectStruct, pixelPtr, pitch)
-            if (!ok) {
-                null
-            } else {
-                val address = pixelPtr.get(0)
-                val bytes = (if (rect == null) size else SDLFloatPoint(rect.width.toFloat(), rect.height.toFloat()))
-                val byteCount = bytes.x.toInt() * bytes.y.toInt() * 4
-                val data = ByteArray(byteCount)
-                MemoryUtil.memByteBuffer(address, byteCount).get(data)
-                SDLTextureLock(data, pitch.get(0))
-            }
-        } finally {
-            rectStruct?.free()
-        }
+    override fun lock(rect: SDLRect?): SDLTextureLock? {
+        val rectArr = rect?.let { intArrayOf(it.x, it.y, it.width, it.height) }
+        val bytes = (if (rect == null) size else SDLFloatPoint(rect.width.toFloat(), rect.height.toFloat()))
+        val byteCount = bytes.x.toInt() * bytes.y.toInt() * 4
+        val pixels = ByteArray(byteCount)
+        val pitch = IntArray(1)
+        if (!Jni.lockTexture(check(), rectArr, pixels, pitch)) return null
+        return SDLTextureLock(pixels, pitch[0])
     }
 
     override fun unlock() {
-        SDLRender.SDL_UnlockTexture(check())
+        Jni.unlockTexture(check())
     }
 
     override fun close() {
-        val t = texture ?: return
-        texture = null
-        SDLRender.SDL_DestroyTexture(t)
+        val t = texture
+        if (t == 0L) return
+        texture = 0L
+        Jni.destroyTexture(t)
     }
 }
 
 // =========================================================================
-// JVM (LWJGL) surface
+// JVM (JNI) surface
 // =========================================================================
 
 internal class JvmSDLSurface internal constructor(
-    surface: SDL_Surface?,
+    ptr: Long,
     internal val owned: Boolean,
 ) : cn.enaium.sdl.SDLSurface {
 
-    internal var surface: SDL_Surface? = surface
+    internal var surface: Long = ptr
 
     override val ptr: Long
-        get() = surface?.address() ?: 0L
+        get() = surface
 
-    internal fun check(): SDL_Surface =
-        surface ?: throw IllegalStateException("SDL surface is closed")
+    internal fun check(): Long =
+        surface.also { if (it == 0L) throw IllegalStateException("SDL surface is closed") }
 
-    override val width: Int get() = check().w()
-    override val height: Int get() = check().h()
-    override val format: Int get() = check().format()
-    override val colorspace: Int get() = LwjglSDLSurface.SDL_GetSurfaceColorspace(check())
-    override val pitch: Int get() = check().pitch()
+    override val width: Int get() = Jni.surfaceWidth(check())
+    override val height: Int get() = Jni.surfaceHeight(check())
+    override val format: Int get() = Jni.surfaceFormat(check())
+    override val colorspace: Int get() = Jni.getSurfaceColorspace(check())
+    override val pitch: Int get() = Jni.surfacePitch(check())
 
     override val pixels: ByteArray
-        get() {
-            val buffer = check().pixels() ?: return ByteArray(0)
-            val out = ByteArray(buffer.limit())
-            buffer.rewind()
-            buffer.get(out)
-            return out
-        }
+        get() = Jni.surfacePixels(check()) ?: ByteArray(0)
 
-    override fun lock(): Boolean = LwjglSDLSurface.SDL_LockSurface(check())
+    override fun lock(): Boolean = Jni.lockSurface(check())
 
     override fun unlock() {
-        LwjglSDLSurface.SDL_UnlockSurface(check())
+        Jni.unlockSurface(check())
     }
 
     override fun fillRect(rect: SDLRect?, color: SDLColor): Boolean {
-        val r = rect?.let {
-            SDL_Rect.calloc().also { s -> s.x(it.x).y(it.y).w(it.width).h(it.height) }
-        }
-        return try {
-            LwjglSDLSurface.SDL_FillSurfaceRect(check(), r, SDLPixels.SDL_MapRGBA(
-                SDLPixels.SDL_GetPixelFormatDetails(check().format()) ?: return false,
-                null,
-                color.r.toByte(),
-                color.g.toByte(),
-                color.b.toByte(),
-                color.a.toByte(),
-            ))
-        } finally {
-            r?.free()
-        }
+        return Jni.surfaceFillRect(
+            check(),
+            rect?.let { intArrayOf(it.x, it.y, it.width, it.height) },
+            color.r, color.g, color.b, color.a,
+        )
     }
 
     override fun fillRects(rects: List<SDLRect>, color: SDLColor): Boolean {
         if (rects.isEmpty()) return true
-        val r = SDL_Rect.calloc(rects.size)
-        return try {
-            for (i in rects.indices) {
-                r.get(i).x(rects[i].x).y(rects[i].y).w(rects[i].width).h(rects[i].height)
-            }
-            LwjglSDLSurface.SDL_FillSurfaceRects(check(), r, SDLPixels.SDL_MapRGBA(
-                SDLPixels.SDL_GetPixelFormatDetails(check().format()) ?: return false,
-                null,
-                color.r.toByte(),
-                color.g.toByte(),
-                color.b.toByte(),
-                color.a.toByte(),
-            ))
-        } finally {
-            r.free()
+        val arr = IntArray(rects.size * 4)
+        for (i in rects.indices) {
+            arr[i * 4] = rects[i].x
+            arr[i * 4 + 1] = rects[i].y
+            arr[i * 4 + 2] = rects[i].width
+            arr[i * 4 + 3] = rects[i].height
         }
+        return Jni.surfaceFillRects(check(), arr, color.r, color.g, color.b, color.a)
     }
 
     override fun blit(src: SDLRect?, dst: SDLSurface, dstRect: SDLRect?): Boolean {
         val jvmDst = (dst as? JvmSDLSurface)?.check()
             ?: throw IllegalArgumentException("dst is not a JVM SDL surface")
-        val srcR = src?.let {
-            SDL_Rect.calloc().also { s -> s.x(it.x).y(it.y).w(it.width).h(it.height) }
-        }
-        val dstR = dstRect?.let {
-            SDL_Rect.calloc().also { s -> s.x(it.x).y(it.y).w(it.width).h(it.height) }
-        }
-        return try {
-            LwjglSDLSurface.SDL_BlitSurface(check(), srcR, jvmDst, dstR)
-        } finally {
-            srcR?.free()
-            dstR?.free()
-        }
+        return Jni.surfaceBlit(
+            check(),
+            src?.let { intArrayOf(it.x, it.y, it.width, it.height) },
+            jvmDst,
+            dstRect?.let { intArrayOf(it.x, it.y, it.width, it.height) },
+        )
     }
 
     override fun blitScaled(src: SDLRect?, dst: SDLSurface, dstRect: SDLRect?, scaleMode: Int): Boolean {
         val jvmDst = (dst as? JvmSDLSurface)?.check()
             ?: throw IllegalArgumentException("dst is not a JVM SDL surface")
-        val srcR = src?.let {
-            SDL_Rect.calloc().also { s -> s.x(it.x).y(it.y).w(it.width).h(it.height) }
-        }
-        val dstR = dstRect?.let {
-            SDL_Rect.calloc().also { s -> s.x(it.x).y(it.y).w(it.width).h(it.height) }
-        }
-        return try {
-            LwjglSDLSurface.SDL_BlitSurfaceScaled(check(), srcR, jvmDst, dstR, scaleMode)
-        } finally {
-            srcR?.free()
-            dstR?.free()
-        }
+        return Jni.surfaceBlitScaled(
+            check(),
+            src?.let { intArrayOf(it.x, it.y, it.width, it.height) },
+            jvmDst,
+            dstRect?.let { intArrayOf(it.x, it.y, it.width, it.height) },
+            scaleMode,
+        )
     }
 
-    override fun saveBMP(path: String): Boolean = LwjglSDLSurface.SDL_SaveBMP(check(), path)
+    override fun saveBMP(path: String): Boolean = Jni.surfaceSaveBMP(check(), path)
 
     override fun convert(format: Int): SDLSurface {
-        val converted = LwjglSDLSurface.SDL_ConvertSurface(check(), format)
-            ?: throw IllegalStateException("SDL_ConvertSurface failed: ${SDL.error()}")
+        val converted = Jni.convertSurface(check(), format)
+        check(converted != 0L) { "SDL_ConvertSurface failed: ${SDL.error()}" }
         return JvmSDLSurface(converted, owned = true)
     }
 
     override fun close() {
-        val s = surface ?: return
-        surface = null
+        val s = surface
+        if (s == 0L) return
+        surface = 0L
         if (owned) {
-            LwjglSDLSurface.SDL_DestroySurface(s)
+            Jni.destroySurface(s)
         }
     }
 }
 
 // =========================================================================
-// JVM (LWJGL) audio
+// JVM (JNI) audio
 // =========================================================================
 
 internal class JvmSDLAudioDevice internal constructor(
@@ -1775,14 +1376,9 @@ internal class JvmSDLAudioDevice internal constructor(
 
     override val format: SDLAudioSpec
         get() {
-            val s = SDL_AudioSpec.calloc()
-            return try {
-                val frames = MemoryStack.stackGet().mallocInt(1)
-                SDLAudio.SDL_GetAudioDeviceFormat(deviceId, s, frames)
-                SDLAudioSpec(format = s.format(), channels = s.channels(), freq = s.freq())
-            } finally {
-                s.free()
-            }
+            val f = Jni.getAudioDeviceFormat(deviceId)
+                ?: throw IllegalStateException("SDL_GetAudioDeviceFormat failed: ${SDL.error()}")
+            return SDLAudioSpec(format = f[0], channels = f[1], freq = f[2])
         }
 
     override val isRecording: Boolean get() = recording
@@ -1790,30 +1386,25 @@ internal class JvmSDLAudioDevice internal constructor(
     override fun bindStream(stream: SDLAudioStream): Boolean {
         val native = stream as? JvmSDLAudioStream
             ?: throw IllegalArgumentException("stream is not a JVM SDL audio stream")
-        return SDLAudio.SDL_BindAudioStream(deviceId, native.ptr)
+        return Jni.bindAudioStream(deviceId, native.ptr)
     }
 
     override fun unbindStream(stream: SDLAudioStream) {
         val native = stream as? JvmSDLAudioStream
             ?: throw IllegalArgumentException("stream is not a JVM SDL audio stream")
-        SDLAudio.SDL_UnbindAudioStream(native.ptr)
+        Jni.unbindAudioStream(deviceId, native.ptr)
     }
 
     override fun pause() {
-        // LWJGL 3.4.x exposes only the toggle form; sync with the paused state.
-        if (!SDLAudio.SDL_AudioDevicePaused(deviceId)) {
-            SDLAudio.SDL_PauseAudioDevice(deviceId)
-        }
+        Jni.pauseAudioDevice(deviceId)
     }
 
     override fun resume() {
-        if (SDLAudio.SDL_AudioDevicePaused(deviceId)) {
-            SDLAudio.SDL_PauseAudioDevice(deviceId)
-        }
+        Jni.resumeAudioDevice(deviceId)
     }
 
     override fun close() {
-        SDLAudio.SDL_CloseAudioDevice(deviceId)
+        Jni.closeAudioDevice(deviceId)
     }
 }
 
@@ -1824,99 +1415,48 @@ internal class JvmSDLAudioStream internal constructor(
     override var ptr: Long = ptr
         private set
 
-    override fun putData(data: ByteArray): Boolean {
-        val buffer = MemoryUtil.memAlloc(data.size)
-        try {
-            buffer.put(data).flip()
-            return SDLAudio.SDL_PutAudioStreamData(ptr, buffer)
-        } finally {
-            MemoryUtil.memFree(buffer)
-        }
-    }
+    override fun putData(data: ByteArray): Boolean = Jni.putAudioStreamData(ptr, data)
 
-    override fun getData(maxLen: Int): ByteArray {
-        val buffer = MemoryUtil.memAlloc(maxLen)
-        try {
-            val read = SDLAudio.SDL_GetAudioStreamData(ptr, buffer)
-            val out = ByteArray(read)
-            buffer.rewind()
-            buffer.get(out)
-            return out
-        } finally {
-            MemoryUtil.memFree(buffer)
-        }
-    }
+    override fun getData(maxLen: Int): ByteArray = Jni.getAudioStreamData(ptr, maxLen) ?: ByteArray(0)
 
     override val available: Int
-        get() = SDLAudio.SDL_GetAudioStreamAvailable(ptr)
+        get() = Jni.getAudioStreamAvailable(ptr)
 
     override val queued: Int
-        get() = SDLAudio.SDL_GetAudioStreamQueued(ptr)
+        get() = Jni.getAudioStreamQueued(ptr)
 
     override val inputSpec: SDLAudioSpec?
-        get() {
-            val src = SDL_AudioSpec.calloc()
-            val dst = SDL_AudioSpec.calloc()
-            return try {
-                if (SDLAudio.SDL_GetAudioStreamFormat(ptr, src, dst)) {
-                    SDLAudioSpec(format = src.format(), channels = src.channels(), freq = src.freq())
-                } else {
-                    null
-                }
-            } finally {
-                src.free()
-                dst.free()
-            }
+        get() = Jni.getAudioStreamFormat(ptr)?.let {
+            SDLAudioSpec(format = it[0], channels = it[1], freq = it[2])
         }
 
     override val outputSpec: SDLAudioSpec?
-        get() {
-            val src = SDL_AudioSpec.calloc()
-            val dst = SDL_AudioSpec.calloc()
-            return try {
-                if (SDLAudio.SDL_GetAudioStreamFormat(ptr, src, dst)) {
-                    SDLAudioSpec(format = dst.format(), channels = dst.channels(), freq = dst.freq())
-                } else {
-                    null
-                }
-            } finally {
-                src.free()
-                dst.free()
-            }
+        get() = Jni.getAudioStreamFormat(ptr)?.let {
+            SDLAudioSpec(format = it[3], channels = it[4], freq = it[5])
         }
 
-    override fun setFormat(src: SDLAudioSpec, dst: SDLAudioSpec): Boolean {
-        val srcStruct = SDL_AudioSpec.calloc()
-        val dstStruct = SDL_AudioSpec.calloc()
-        return try {
-            srcStruct.format(src.format).channels(src.channels).freq(src.freq)
-            dstStruct.format(dst.format).channels(dst.channels).freq(dst.freq)
-            SDLAudio.SDL_SetAudioStreamFormat(ptr, srcStruct, dstStruct)
-        } finally {
-            srcStruct.free()
-            dstStruct.free()
-        }
-    }
+    override fun setFormat(src: SDLAudioSpec, dst: SDLAudioSpec): Boolean =
+        Jni.setAudioStreamFormat(ptr, src.format, src.channels, src.freq, dst.format, dst.channels, dst.freq)
 
     override var gain: Float
-        get() = SDLAudio.SDL_GetAudioStreamGain(ptr)
+        get() = Jni.getAudioStreamGain(ptr)
         set(value) {
-            SDLAudio.SDL_SetAudioStreamGain(ptr, value)
+            Jni.setAudioStreamGain(ptr, value)
         }
 
     override var frequencyRatio: Float
-        get() = SDLAudio.SDL_GetAudioStreamFrequencyRatio(ptr)
+        get() = Jni.getAudioStreamFrequencyRatio(ptr)
         set(value) {
-            SDLAudio.SDL_SetAudioStreamFrequencyRatio(ptr, value)
+            Jni.setAudioStreamFrequencyRatio(ptr, value)
         }
 
     override var devicePaused: Boolean
-        get() = SDLAudio.SDL_AudioStreamDevicePaused(ptr)
+        get() = Jni.audioStreamDevicePaused(ptr)
         set(value) {
             if (value) {
-                SDLAudio.SDL_PauseAudioStreamDevice(ptr)
+                Jni.pauseAudioStreamDevice(ptr)
             } else {
-                SDLAudio.SDL_ResumeAudioStreamDevice(ptr)
+                Jni.resumeAudioStreamDevice(ptr)
             }
         }
 
@@ -1928,18 +1468,18 @@ internal class JvmSDLAudioStream internal constructor(
         devicePaused = true
     }
 
-    override fun flush(): Boolean = SDLAudio.SDL_FlushAudioStream(ptr)
+    override fun flush(): Boolean = Jni.flushAudioStream(ptr)
 
-    override fun clear(): Boolean = SDLAudio.SDL_ClearAudioStream(ptr)
+    override fun clear(): Boolean = Jni.clearAudioStream(ptr)
 
     override fun close() {
-        SDLAudio.SDL_DestroyAudioStream(ptr)
+        Jni.destroyAudioStream(ptr)
         ptr = 0L
     }
 }
 
 // =========================================================================
-// JVM (LWJGL) joystick / gamepad
+// JVM (JNI) joystick / gamepad
 // =========================================================================
 
 internal class JvmSDLJoystick internal constructor(
@@ -1949,38 +1489,30 @@ internal class JvmSDLJoystick internal constructor(
     override var ptr: Long = ptr
         private set
 
-    override val id: Int get() = LwjglSDLJoystick.SDL_GetJoystickID(ptr)
-    override val name: String? get() = LwjglSDLJoystick.SDL_GetJoystickName(ptr)
-    override val type: Int get() = LwjglSDLJoystick.SDL_GetJoystickType(ptr)
-    override val numAxes: Int get() = LwjglSDLJoystick.SDL_GetNumJoystickAxes(ptr)
-    override val numBalls: Int get() = LwjglSDLJoystick.SDL_GetNumJoystickBalls(ptr)
-    override val numHats: Int get() = LwjglSDLJoystick.SDL_GetNumJoystickHats(ptr)
-    override val numButtons: Int get() = LwjglSDLJoystick.SDL_GetNumJoystickButtons(ptr)
-    override val playerIndex: Int get() = LwjglSDLJoystick.SDL_GetJoystickPlayerIndex(ptr)
-    override val firmwareVersion: Int get() = LwjglSDLJoystick.SDL_GetJoystickFirmwareVersion(ptr).toInt()
+    override val id: Int get() = Jni.joystickId(ptr)
+    override val name: String? get() = Jni.joystickName(ptr)
+    override val type: Int get() = Jni.joystickType(ptr)
+    override val numAxes: Int get() = Jni.joystickNumAxes(ptr)
+    override val numBalls: Int get() = Jni.joystickNumBalls(ptr)
+    override val numHats: Int get() = Jni.joystickNumHats(ptr)
+    override val numButtons: Int get() = Jni.joystickNumButtons(ptr)
+    override val playerIndex: Int get() = Jni.joystickPlayerIndex(ptr)
+    override val firmwareVersion: Int get() = Jni.joystickFirmwareVersion(ptr)
 
-    override fun axis(axis: Int): Short = LwjglSDLJoystick.SDL_GetJoystickAxis(ptr, axis)
+    override fun axis(axis: Int): Short = Jni.joystickAxis(ptr, axis)
 
-    override fun button(button: Int): Boolean = LwjglSDLJoystick.SDL_GetJoystickButton(ptr, button)
+    override fun button(button: Int): Boolean = Jni.joystickButton(ptr, button)
 
-    override fun hat(hat: Int): UByte = LwjglSDLJoystick.SDL_GetJoystickHat(ptr, hat).toUByte()
+    override fun hat(hat: Int): UByte = Jni.joystickHat(ptr, hat).toUByte()
 
-    override fun ball(ball: Int): SDLPoint? = MemoryStack.stackPush().use { stack ->
-        val dx = stack.mallocInt(1)
-        val dy = stack.mallocInt(1)
-        if (LwjglSDLJoystick.SDL_GetJoystickBall(ptr, ball, dx, dy)) {
-            SDLPoint(dx.get(0), dy.get(0))
-        } else {
-            null
-        }
-    }
+    override fun ball(ball: Int): SDLPoint? = Jni.joystickBall(ptr, ball)?.let { SDLPoint(it[0], it[1]) }
 
     override fun rumble(lowFrequency: Int, highFrequency: Int, durationMs: Int): Boolean =
-        LwjglSDLJoystick.SDL_RumbleJoystick(ptr, lowFrequency.toShort(), highFrequency.toShort(), durationMs)
+        Jni.joystickRumble(ptr, lowFrequency, highFrequency, durationMs)
 
     override fun close() {
         if (ptr != 0L) {
-            LwjglSDLJoystick.SDL_CloseJoystick(ptr)
+            Jni.closeJoystick(ptr)
             ptr = 0L
         }
     }
@@ -1993,51 +1525,44 @@ internal class JvmSDLGamepad internal constructor(
     override var ptr: Long = ptr
         private set
 
-    override val id: Int get() = LwjglSDLGamepad.SDL_GetGamepadID(ptr)
-    override val name: String? get() = LwjglSDLGamepad.SDL_GetGamepadName(ptr)
-    override val vendor: Int get() = LwjglSDLGamepad.SDL_GetGamepadVendor(ptr).toInt()
-    override val product: Int get() = LwjglSDLGamepad.SDL_GetGamepadProduct(ptr).toInt()
-    override val serial: String? get() = LwjglSDLGamepad.SDL_GetGamepadSerial(ptr)
-    override val connected: Boolean get() = LwjglSDLGamepad.SDL_GamepadConnected(ptr)
-    override val playerIndex: Int get() = LwjglSDLGamepad.SDL_GetGamepadPlayerIndex(ptr)
-    override val firmwareVersion: Int get() = LwjglSDLGamepad.SDL_GetGamepadFirmwareVersion(ptr).toInt()
-    override val touchpadCount: Int get() = LwjglSDLGamepad.SDL_GetNumGamepadTouchpads(ptr)
+    override val id: Int get() = Jni.gamepadId(ptr)
+    override val name: String? get() = Jni.gamepadName(ptr)
+    override val vendor: Int get() = Jni.gamepadVendor(ptr)
+    override val product: Int get() = Jni.gamepadProduct(ptr)
+    override val serial: String? get() = Jni.gamepadSerial(ptr)
+    override val connected: Boolean get() = Jni.gamepadConnected(ptr)
+    override val playerIndex: Int get() = Jni.gamepadPlayerIndex(ptr)
+    override val firmwareVersion: Int get() = Jni.gamepadFirmwareVersion(ptr)
+    override val touchpadCount: Int get() = Jni.gamepadNumTouchpads(ptr)
 
-    override fun touchpadFinger(touchpad: Int, finger: Int): SDLTouchpadFinger? = MemoryStack.stackPush().use { stack ->
-        val down = stack.malloc(1)
-        val x = stack.mallocFloat(1)
-        val y = stack.mallocFloat(1)
-        val pressure = stack.mallocFloat(1)
-        if (LwjglSDLGamepad.SDL_GetGamepadTouchpadFinger(ptr, touchpad, finger, down, x, y, pressure)) {
-            SDLTouchpadFinger(touchpad, finger, down.get(0) != 0.toByte(), x.get(0), y.get(0), pressure.get(0))
-        } else {
-            null
+    override fun touchpadFinger(touchpad: Int, finger: Int): SDLTouchpadFinger? =
+        Jni.gamepadTouchpadFinger(ptr, touchpad, finger)?.let {
+            SDLTouchpadFinger(
+                touchpad = touchpad,
+                finger = finger,
+                down = it[0] != 0f,
+                x = it[1],
+                y = it[2],
+                pressure = it[3],
+            )
         }
-    }
 
-    override fun hasSensor(type: Int): Boolean = LwjglSDLGamepad.SDL_GamepadHasSensor(ptr, type)
+    override fun hasSensor(type: Int): Boolean = Jni.gamepadHasSensor(ptr, type)
 
-    override fun sensorData(type: Int): FloatArray? = MemoryStack.stackPush().use { stack ->
-        val data = stack.mallocFloat(3)
-        if (LwjglSDLGamepad.SDL_GetGamepadSensorData(ptr, type, data)) {
-            FloatArray(3) { data.get(it) }
-        } else {
-            null
-        }
-    }
+    override fun sensorData(type: Int): FloatArray? = Jni.gamepadSensorData(ptr, type)
 
-    override fun getSensorDataRate(type: Int): Float = LwjglSDLGamepad.SDL_GetGamepadSensorDataRate(ptr, type)
+    override fun getSensorDataRate(type: Int): Float = Jni.gamepadSensorDataRate(ptr, type)
 
-    override fun button(button: Int): Boolean = LwjglSDLGamepad.SDL_GetGamepadButton(ptr, button)
+    override fun button(button: Int): Boolean = Jni.gamepadButton(ptr, button)
 
-    override fun axis(axis: Int): Short = LwjglSDLGamepad.SDL_GetGamepadAxis(ptr, axis)
+    override fun axis(axis: Int): Short = Jni.gamepadAxis(ptr, axis)
 
     override fun rumble(lowFrequency: Int, highFrequency: Int, durationMs: Int): Boolean =
-        LwjglSDLGamepad.SDL_RumbleGamepad(ptr, lowFrequency.toShort(), highFrequency.toShort(), durationMs)
+        Jni.gamepadRumble(ptr, lowFrequency, highFrequency, durationMs)
 
     override fun close() {
         if (ptr != 0L) {
-            LwjglSDLGamepad.SDL_CloseGamepad(ptr)
+            Jni.closeGamepad(ptr)
             ptr = 0L
         }
     }
