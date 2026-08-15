@@ -88,7 +88,10 @@ val configureJniLibrary by tasks.registering(Exec::class) {
     workingDir = buildDir
     val javaHome = System.getProperty("java.home") ?: System.getenv("JAVA_HOME") ?: ""
     val jniInclude = if (javaHome.isNotEmpty()) "$javaHome/include" else ""
-    val makeGenerator = if (System.getenv("MSYSTEM") != null) "MSYS Makefiles" else "MinGW Makefiles"
+    val makeGenerator = when {
+        hostIsWindowsX64 -> if (System.getenv("MSYSTEM") != null) "MSYS Makefiles" else "MinGW Makefiles"
+        else -> "Unix Makefiles"
+    }
     val args = mutableListOf(
         cmakeExecutable,
         rootProject.file("jni").absolutePath,
