@@ -88,7 +88,6 @@ val configureJniLibrary by tasks.registering(Exec::class) {
     workingDir = buildDir
     val javaHome = System.getProperty("java.home") ?: System.getenv("JAVA_HOME") ?: ""
     val jniInclude = if (javaHome.isNotEmpty()) "$javaHome/include" else ""
-    val win32JniInclude = rootProject.file("jni/win32-include").absolutePath
     val makeGenerator = when {
         hostIsWindowsX64 -> if (System.getenv("MSYSTEM") != null) "MSYS Makefiles" else "MinGW Makefiles"
         else -> "Unix Makefiles"
@@ -99,7 +98,7 @@ val configureJniLibrary by tasks.registering(Exec::class) {
         "-G", makeGenerator,
         "-DCMAKE_BUILD_TYPE=Release",
         "-DJNI_INCLUDE_DIR=$jniInclude",
-        "-DJNI_INCLUDE_DIR_PLATFORM=$win32JniInclude",
+        "-DJNI_INCLUDE_DIR_PLATFORM=$jniInclude/win32",
         // DLLs are RUNTIME outputs in CMake, not LIBRARY outputs.
         "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${outDir.absolutePath}",
         "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=${outDir.absolutePath}",

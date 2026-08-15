@@ -145,6 +145,8 @@ jobs:
           :sdl-kmp:publishMingwX64PublicationToMavenCentralRepository
           :jni-jvm-linux-x86_64:publishMavenPublicationToMavenCentralRepository
           :jni-jvm-linux-aarch64:publishMavenPublicationToMavenCentralRepository
+          # The windows-x86_64 JNI artifact is published by the
+          # publish-windows job (native MinGW build), not from here.
           --continue
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
