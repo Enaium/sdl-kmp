@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(sdl3-kmp-jni C CXX)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -47,6 +51,11 @@ endif()
 if(JNI_INCLUDE_DIR_PLATFORM)
     target_include_directories(sdl_jni PRIVATE ${JNI_INCLUDE_DIR_PLATFORM})
 endif()
+
+# SDL3-static is linked into the JNI shared library, so it must be compiled
+# position-independent (its default on macOS; required on Linux, where the
+# OpenXR/X11 dlopen stubs otherwise fail to link into a .so).
+set_target_properties(SDL3-static PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # SDL3-static propagates its (LINK_ONLY) dependencies - the macOS frameworks,
 # the Windows system libraries and -lm/-ldl/-lpthread on Linux - so the JNI
