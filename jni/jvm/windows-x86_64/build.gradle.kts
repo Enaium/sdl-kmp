@@ -56,7 +56,21 @@ val resourceDir = "cn/enaium/sdl/native/$classifier"
 val host = OperatingSystem.current()
 val hostArch = System.getProperty("os.arch").lowercase()
 val hostIsWindowsX64 = host.isWindows && (hostArch == "amd64" || hostArch == "x86_64")
-val canBuildHere = hostIsWindowsX64
+val hostIsLinuxX64 = host.isLinux && (hostArch == "amd64" || hostArch == "x86_64")
+
+// The MinGW x86_64-w64-mingw32 toolchain cross-compiles the DLL from Linux
+// (Windows hosts default to MSVC, whose toolchain is configured by CMake
+// itself). GitHub Actions' Linux runners install it via gcc-mingw-w64-x86-64.
+fun hasMingwCrossToolchain(): Boolean {
+    val name = "x86_64-w64-mingw32-gcc"
+    return System.getenv("PATH")?.split(File.pathSeparator).orEmpty().any { dir ->
+        val f = File(dir, name)
+        f.isFile && f.canExecute()
+    }
+}
+
+val canBuildHere = hostIsWindowsX64 || (hostIsLinuxX64 && hasMingwCrossToolchain())
+val crossCompiling = hostIsLinuxX64
 
 val nativeOutputDir = layout.buildDirectory.dir("jni-native/$classifier")
 val cmakeBuildDir = layout.buildDirectory.dir("cmake-jni/$classifier")
@@ -74,17 +88,32 @@ val configureJniLibrary by tasks.registering(Exec::class) {
     workingDir = buildDir
     val javaHome = System.getProperty("java.home") ?: System.getenv("JAVA_HOME") ?: ""
     val jniInclude = if (javaHome.isNotEmpty()) "$javaHome/include" else ""
-    commandLine(
+    val makeGenerator = if (System.getenv("MSYSTEM") != null) "MSYS Makefiles" else "MinGW Makefiles"
+    val args = mutableListOf(
         cmakeExecutable,
         rootProject.file("jni").absolutePath,
+        "-G", makeGenerator,
         "-DCMAKE_BUILD_TYPE=Release",
         "-DJNI_INCLUDE_DIR=$jniInclude",
         "-DJNI_INCLUDE_DIR_PLATFORM=$jniInclude/win32",
-        "-DCMAKE_OSX_ARCHITECTURES=arm64",
-        "-DCMAKE_SYSTEM_PROCESSOR=arm64",
-        "",
+        // DLLs are RUNTIME outputs in CMake, not LIBRARY outputs.
+        "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${outDir.absolutePath}",
         "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=${outDir.absolutePath}",
+        // Statically link the MinGW runtime so the DLL has no dependency on
+        // libstdc++-6.dll / libgcc_s_seh-1.dll, which are not on the JVM's
+        // PATH.
+        "-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++",
     )
+    if (crossCompiling) {
+        args += listOf(
+            "-DCMAKE_SYSTEM_NAME=Windows",
+            "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+            "-DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc",
+            "-DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++",
+            "-DCMAKE_FIND_ROOT_PATH=/usr/x86_64-w64-mingw32",
+        )
+    }
+    commandLine(args)
 }
 
 val buildJniLibrary by tasks.registering(Exec::class) {
