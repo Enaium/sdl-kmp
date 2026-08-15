@@ -244,6 +244,13 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Install CMake
+        shell: pwsh
+        run: |
+          choco install cmake -y --no-progress
+          # cmake.exe may not be on PATH for the Gradle daemon.
+          echo "C:\Program Files\CMake\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Install MinGW
         shell: pwsh
         run: |
