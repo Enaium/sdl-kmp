@@ -6,8 +6,9 @@ name: Test
 # Builds and tests each platform on the runner that can build it:
 #
 #   macOS ARM64 -> :sdl-kmp metadata + jvm + all Apple target klibs
-#                  (with the embedded SDL3 static library), JVM + native
-#                  tests, and the example app (native + JVM, headless)
+#                  (with the embedded SDL3 static library), the
+#                  :jni-jvm-darwin-* JNI artifacts, JVM + native tests, and
+#                  the example app (native + JVM, headless)
 #   Linux x64   -> linuxX64 klib (with embedded static library) and the
 #                  cross-compiled mingwX64 klib, JVM + native tests, and
 #                  the example app (native, headless)
@@ -59,6 +60,8 @@ jobs:
           -Psigning.secretKeyRingFile="${{ runner.temp }}/signing-key.gpg"
           -Psigning.password="${{ secrets.SIGNING_PASSWORD }}"
           :sdl-kmp:publishToMavenLocal
+          :jni-jvm-darwin-aarch64:publishToMavenLocal
+          :jni-jvm-darwin-x86_64:publishToMavenLocal
 
       - name: Run JVM tests
         run: ./gradlew --no-daemon :sdl-kmp:jvmTest
@@ -110,7 +113,7 @@ jobs:
           ls -la "$RUNNER_TEMP/signing-key.gpg"
           head -c 16 "$RUNNER_TEMP/signing-key.gpg" | od -c | head -2
 
-      - name: Publish linuxX64/mingwX64 klibs to Maven Local
+      - name: Publish linuxX64/mingwX64 klibs and the linux-x86_64 JNI artifact to Maven Local
         run: >
           ./gradlew --no-daemon --rerun-tasks --stacktrace
           -Psigning.keyId="${{ secrets.SIGNING_KEY_ID }}"
@@ -119,6 +122,7 @@ jobs:
           :sdl-kmp:publishKotlinMultiplatformPublicationToMavenLocal
           :sdl-kmp:publishLinuxX64PublicationToMavenLocal
           :sdl-kmp:publishMingwX64PublicationToMavenLocal
+          :jni-jvm-linux-x86_64:publishToMavenLocal
 
       - name: Run JVM tests
         run: ./gradlew --no-daemon :sdl-kmp:jvmTest

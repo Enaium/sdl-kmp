@@ -2,14 +2,14 @@
 
 Kotlin Multiplatform bindings for [SDL3](https://github.com/libsdl-org/SDL), with a curated common API backed by two implementations:
 
-- **JVM**: the official [LWJGL](https://www.lwjgl.org) SDL3 bindings (`org.lwjgl:lwjgl-sdl`).
+- **JVM**: SDL3 is compiled from this repository's `SDL` submodule into a JNI shared library (`libsdl_jni`) that is built by CMake (`jni/`) and shipped as per-OS/arch `sdl-kmp-jni-jvm-*` artifacts. `NativeLoader` extracts the matching binary at runtime, so consumers need nothing beyond the normal dependencies (no LWJGL, no system SDL).
 - **Native (Kotlin/Native)**: the SDL3 static library from this repository's `SDL` submodule is compiled per target with CMake and **embedded into the published klib**, so consumers get a fully self-contained binary (no dynamic SDL3 dependency). This includes the Android native targets (`androidNative*`), cross-compiled with the Android NDK.
 
 ## Supported platforms
 
 | Platform   | Targets                                             | Implementation                     |
 |------------|-----------------------------------------------------|------------------------------------|
-| JVM        | `jvm` (Linux/macOS/Windows)                         | LWJGL SDL3 bindings                |
+| JVM        | `jvm` (Linux/macOS/Windows)                         | JNI shared library (`libsdl_jni`), SDL3 compiled from source |
 | macOS      | `macosArm64`, `macosX64`                            | cinterop + embedded static SDL3    |
 | Linux      | `linuxX64`                                          | cinterop + embedded static SDL3    |
 | Windows    | `mingwX64`                                          | cinterop + embedded static SDL3    |
@@ -28,7 +28,7 @@ Not supported: watchOS (SDL3 has no watchOS support) and visionOS (Kotlin/Native
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("cn.enaium.sdl:sdl-kmp:1.0.5")
+            implementation("cn.enaium.sdl:sdl-kmp:1.0.6")
         }
     }
 }
@@ -87,7 +87,8 @@ fun main() {
   ("No function found for symbol ...") at the first SDL call. Keep the consumer's
   Kotlin version in sync.
 - The `SDL_VIDEO_DRIVER=dummy` hint (environment variable or `SDL.setHint`) makes SDL run headless — useful for CI and servers.
-- **macOS JVM**: requires `-XstartOnFirstThread` JVM argument (so AppKit/Cocoa can initialise). The example `runJvm` task already sets this.
+- **macOS JVM**: requires `-XstartOnFirstThread` JVM argument (so AppKit/Cocoa can initialise). The example `runJvm` tasks already set this.
+- **JVM native library**: the matching `sdl-kmp-jni-jvm-{os}-{arch}` artifact is a transitive runtime dependency of `sdl-kmp`; `NativeLoader` extracts the bundled `libsdl_jni` from the classpath and `System.load()`s it, so no `java.library.path` setup is needed.
 - On Linux the static SDL3 is built with the X11/Wayland drivers loaded dynamically (`dlopen`), so the published klib has no link-time dependency on X11.
 - **Android**: building an `androidNative*` target requires an installed Android NDK (found under `$ANDROID_HOME/ndk`); the SDL3 static library is cross-compiled with its CMake toolchain. At runtime the app must be launched through `org.libsdl.app.SDLActivity` (or a subclass), which loads the shared library and calls its exported `SDL_main` (see the `examples/sdl_renderer/android` module).
 
@@ -104,14 +105,16 @@ All examples live under `examples/` as standalone KMP modules; each provides
   (renderer, textures, audio, input). Runs on JVM, macOS, Linux, Windows
   (MinGW) and Android (with its `android` submodule APK).
 - **`examples/sdl_vulkan`** — minimal Vulkan triangle (gradient shaders) on
-  JVM, macOS, Linux and Windows. On the JVM the LWJGL function table is wired
-  to SDL's `SDL_Vulkan_GetVkGetInstanceProcAddr`; on native targets a small C
-  helper builds the pipeline.
+  JVM, macOS, Linux and Windows. On the JVM the renderer uses the LWJGL
+  Vulkan bindings (the example's own dependency - the sdl-kmp library itself
+  does not use LWJGL), wired to SDL's `SDL_Vulkan_GetVkGetInstanceProcAddr`;
+  on native targets a small C helper builds the pipeline.
 - **`examples/sdl_opengl`** — minimal OpenGL 3.3 core / GLES 3 triangle on
   JVM, macOS, Linux and Windows.
 - **`examples/sdl_opengl_es`** — minimal OpenGL ES 3.0 gradient triangle
-  (the browser-capable GL profile: WebGL2 on wasm). Runs on JVM (LWJGL GLES),
-  macOS, Linux, Windows and Android, with `browser` (wasmJs) and `android`
+  (the browser-capable GL profile: WebGL2 on wasm). Runs on JVM (GL calls go
+  through the LWJGL OpenGL bindings, an example-only dependency), macOS,
+  Linux, Windows and Android, with `browser` (wasmJs) and `android`
   submodules.
 - **`examples/sdl_gpu`** — triangle rendered through the SDL3 GPU API
   (cross-backend: Metal on macOS, Vulkan on Android) entirely from
@@ -153,8 +156,11 @@ drivers).
 
 ```bash
 # Publish the library to the local Maven repository first (macOS builds all
-# Apple targets + JVM; run on Linux for the linuxX64/mingwX64 klibs).
+# Apple targets + JVM + the darwin JNI artifacts; run on Linux for the
+# linuxX64/mingwX64 klibs and the linux-x86_64 JNI artifact).
 ./gradlew :sdl-kmp:publishToMavenLocal
+./gradlew :jni-jvm-darwin-aarch64:publishToMavenLocal :jni-jvm-darwin-x86_64:publishToMavenLocal   # macOS
+./gradlew :jni-jvm-linux-x86_64:publishToMavenLocal                                                 # Linux
 
 # JVM (pass SDL_VIDEO_DRIVER=dummy for headless mode)
 ./gradlew :examples:sdl_renderer:jvmRun
@@ -213,8 +219,8 @@ install these automatically.
 
 ## GitHub Actions
 
-- `.github/workflows/test.yml` — manual trigger: macOS builds all Apple klibs and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `mingwX64`, and runs the renderer example headless; Android installs the NDK, builds the four `androidNative` klibs and assembles the `sdl_renderer`/`sdl_gpu` APKs; Web installs the Emscripten SDK, builds the `wasmJs` klib and the browser example.
-- `.github/workflows/publish.yml` — manual workflow that publishes the metadata + JVM + Apple klibs from `macos-14`, the `linuxX64`/`mingwX64` klibs from `ubuntu-latest`, and the four `androidNative` klibs from `ubuntu-latest` (with the NDK) to Maven Central.
+- `.github/workflows/test.yml` — manual trigger: macOS builds all Apple klibs and the `darwin` JNI artifacts and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `mingwX64`, builds the `linux-x86_64` JNI artifact, and runs the renderer example headless; Android installs the NDK, builds the four `androidNative` klibs and assembles the `sdl_renderer`/`sdl_gpu` APKs; Web installs the Emscripten SDK, builds the `wasmJs` klib and the browser example.
+- `.github/workflows/publish.yml` — manual workflow that publishes the metadata + JVM + Apple klibs and the `sdl-kmp-jni-jvm-darwin-*` artifacts from `macos-14`, the `linuxX64`/`mingwX64` klibs and `sdl-kmp-jni-jvm-linux-x86_64` from `ubuntu-latest`, and the four `androidNative` klibs from `ubuntu-latest` (with the NDK) to Maven Central.
 
 Required secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` (base64 GPG keyring), `SIGNING_KEY_ID`, `SIGNING_PASSWORD`.
 
