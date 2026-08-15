@@ -84,17 +84,26 @@ val configureJniLibrary by tasks.registering(Exec::class) {
     workingDir = buildDir
     val javaHome = System.getProperty("java.home") ?: System.getenv("JAVA_HOME") ?: ""
     val jniInclude = if (javaHome.isNotEmpty()) "$javaHome/include" else ""
-    commandLine(
+    val args = mutableListOf(
         cmakeExecutable,
         rootProject.file("jni").absolutePath,
         "-DCMAKE_BUILD_TYPE=Release",
         "-DJNI_INCLUDE_DIR=$jniInclude",
         "-DJNI_INCLUDE_DIR_PLATFORM=$jniInclude/linux",
-        "",
-        "",
-        "",
         "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=${outDir.absolutePath}",
     )
+    if (hostIsLinuxX64) {
+        // Cross-compile with the aarch64-linux-gnu toolchain from an x86_64
+        // host (the SDL3 dlopen-based drivers only need the arch-agnostic
+        // headers from /usr/include, so no multiarch sysroot is required).
+        args += listOf(
+            "-DCMAKE_SYSTEM_NAME=Linux",
+            "-DCMAKE_SYSTEM_PROCESSOR=aarch64",
+            "-DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc",
+            "-DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++",
+        )
+    }
+    commandLine(args)
 }
 
 val buildJniLibrary by tasks.registering(Exec::class) {

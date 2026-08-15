@@ -163,6 +163,7 @@ drivers).
 ./gradlew :sdl-kmp:publishToMavenLocal
 ./gradlew :jni-jvm-darwin-aarch64:publishToMavenLocal :jni-jvm-darwin-x86_64:publishToMavenLocal   # macOS
 ./gradlew :jni-jvm-linux-x86_64:publishToMavenLocal                                                 # Linux
+./gradlew :jni-jvm-linux-aarch64:publishToMavenLocal                                               # Linux (aarch64 host or cross)
 ./gradlew :jni-jvm-windows-x86_64:publishToMavenLocal                                               # Windows (MinGW)
 
 # JVM (pass SDL_VIDEO_DRIVER=dummy for headless mode)
@@ -222,8 +223,8 @@ install these automatically.
 
 ## GitHub Actions
 
-- `.github/workflows/test.yml` — manual trigger: macOS builds all Apple klibs and the `darwin` JNI artifacts and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `mingwX64`, builds the `linux-x86_64` JNI artifact, and runs the renderer example headless; Windows builds the `windows-x86_64` JNI artifact natively (MinGW) and runs JVM tests; Android installs the NDK, builds the four `androidNative` klibs and assembles the `sdl_renderer`/`sdl_gpu` APKs; Web installs the Emscripten SDK, builds the `wasmJs` klib and the browser example.
-- `.github/workflows/publish.yml` — manual workflow that publishes the metadata + JVM + Apple klibs and the `sdl-kmp-jni-jvm-darwin-*` artifacts from `macos-14`, the `linuxX64`/`mingwX64` klibs and `sdl-kmp-jni-jvm-linux-x86_64` from `ubuntu-latest`, `sdl-kmp-jni-jvm-windows-x86_64` from `windows-latest` (native MinGW build), and the four `androidNative` klibs from `ubuntu-latest` (with the NDK) to Maven Central.
+- `.github/workflows/test.yml` — manual trigger: macOS builds all Apple klibs and the `darwin` JNI artifacts and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `mingwX64`, builds the `linux-x86_64`/`linux-aarch64` JNI artifacts, and runs the renderer example headless; Windows builds the `windows-x86_64` JNI artifact natively (MinGW) and runs JVM tests; Android installs the NDK, builds the four `androidNative` klibs and assembles the `sdl_renderer`/`sdl_gpu` APKs; Web installs the Emscripten SDK, builds the `wasmJs` klib and the browser example.
+- `.github/workflows/publish.yml` — manual workflow that publishes the metadata + JVM + Apple klibs and the `sdl-kmp-jni-jvm-darwin-*` artifacts from `macos-14`, the `linuxX64`/`mingwX64` klibs and the `sdl-kmp-jni-jvm-linux-*` artifacts from `ubuntu-latest`, `sdl-kmp-jni-jvm-windows-x86_64` from `windows-latest` (native MinGW build), and the four `androidNative` klibs from `ubuntu-latest` (with the NDK) to Maven Central.
 
 Required secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` (base64 GPG keyring), `SIGNING_KEY_ID`, `SIGNING_PASSWORD`.
 
