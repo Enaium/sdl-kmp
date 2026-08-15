@@ -17,11 +17,20 @@ val hostOs = OperatingSystem.current()
 val hostArch = System.getProperty("os.arch").lowercase()
 
 // Apple targets build on macOS via Xcode; linuxX64 is built on Linux hosts;
-// mingwX64 is cross-compiled on Linux hosts with the x86_64-w64-mingw32
-// toolchain (Windows hosts default to MSVC, whose archives are incompatible
-// with Kotlin/Native's MinGW linker).
+// linuxArm64 is built on Linux aarch64 hosts or cross-compiled from x86_64
+// with the aarch64-linux-gnu toolchain; mingwX64 is cross-compiled on Linux
+// hosts with the x86_64-w64-mingw32 toolchain (Windows hosts default to MSVC,
+// whose archives are incompatible with Kotlin/Native's MinGW linker).
 fun hasMingwCrossToolchain(): Boolean {
     val name = "x86_64-w64-mingw32-gcc"
+    return System.getenv("PATH")?.split(File.pathSeparator).orEmpty().any { dir ->
+        val f = File(dir, name)
+        f.isFile && f.canExecute()
+    }
+}
+
+fun hasAarch64CrossToolchain(): Boolean {
+    val name = "aarch64-linux-gnu-gcc"
     return System.getenv("PATH")?.split(File.pathSeparator).orEmpty().any { dir ->
         val f = File(dir, name)
         f.isFile && f.canExecute()
@@ -66,6 +75,8 @@ fun canBuildNativeTarget(targetName: String): Boolean {
                 ) -> true
 
         hostOs.isLinux && targetName == "linuxX64" -> true
+        hostOs.isLinux && targetName == "linuxArm64" &&
+                (hostArch == "aarch64" || hostArch == "arm64" || hasAarch64CrossToolchain()) -> true
         hostOs.isLinux && targetName == "mingwX64" && hasMingwCrossToolchain() -> true
         targetName.startsWith("androidNative") && androidNdkPath() != null -> true
         else -> false
@@ -126,6 +137,7 @@ kotlin {
     macosX64()
 
     linuxX64()
+    linuxArm64()
     androidNativeArm64()
     androidNativeArm32()
     androidNativeX64()
@@ -338,6 +350,19 @@ if (hostOs.isMacOsX) {
     )
 } else if (hostOs.isLinux) {
     registerNativeBuildTasks("linuxX64")
+    // linuxArm64 is cross-compiled on x86_64 hosts with the aarch64-linux-gnu
+    // toolchain (canBuildNativeTarget gates on it); SDL3's dlopen-based
+    // drivers only need the arch-agnostic headers from /usr/include, so no
+    // multiarch sysroot is required.
+    registerNativeBuildTasks(
+        "linuxArm64",
+        listOf(
+            "-DCMAKE_SYSTEM_NAME=Linux",
+            "-DCMAKE_SYSTEM_PROCESSOR=aarch64",
+            "-DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc",
+            "-DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++",
+        ),
+    )
     // Cross-compile the MinGW static library with the
     // x86_64-w64-mingw32 toolchain (canBuildNativeTarget gates on it).
     registerNativeBuildTasks(

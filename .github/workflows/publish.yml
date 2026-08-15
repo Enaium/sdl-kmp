@@ -11,8 +11,9 @@ name: Publish
 #                    (macos/ios/tvos, each with the embedded SDL3 static
 #                    library built on this runner) + the
 #                    sdl-kmp-jni-jvm-darwin-{aarch64,x86_64} artifacts
-#   ubuntu-latest -> :sdl-kmp linuxX64 + mingwX64 klibs (with the embedded
-#                    static library; mingwX64 is cross-compiled) +
+#   ubuntu-latest -> :sdl-kmp linuxX64 + linuxArm64 + mingwX64 klibs (with
+#                    the embedded static library; the latter two are
+#                    cross-compiled) +
 #                    sdl-kmp-jni-jvm-linux-x86_64 and
 #                    sdl-kmp-jni-jvm-linux-aarch64 (cross-compiled)
 #   windows-latest -> sdl-kmp-jni-jvm-windows-x86_64 (native MinGW build)
@@ -140,6 +141,7 @@ jobs:
           -Psigning.secretKeyRingFile="${{ runner.temp }}/signing-key.gpg"
           -Psigning.password="${{ secrets.SIGNING_PASSWORD }}"
           :sdl-kmp:publishLinuxX64PublicationToMavenCentralRepository
+          :sdl-kmp:publishLinuxArm64PublicationToMavenCentralRepository
           :sdl-kmp:publishMingwX64PublicationToMavenCentralRepository
           :jni-jvm-linux-x86_64:publishMavenPublicationToMavenCentralRepository
           :jni-jvm-linux-aarch64:publishMavenPublicationToMavenCentralRepository

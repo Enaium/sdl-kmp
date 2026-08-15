@@ -11,7 +11,7 @@ Kotlin Multiplatform bindings for [SDL3](https://github.com/libsdl-org/SDL), wit
 |------------|-----------------------------------------------------|------------------------------------|
 | JVM        | `jvm` (Linux/macOS/Windows)                         | JNI shared library (`libsdl_jni`), SDL3 compiled from source |
 | macOS      | `macosArm64`, `macosX64`                            | cinterop + embedded static SDL3    |
-| Linux      | `linuxX64`                                          | cinterop + embedded static SDL3    |
+| Linux      | `linuxX64`, `linuxArm64`                             | cinterop + embedded static SDL3    |
 | Windows    | `mingwX64`                                          | cinterop + embedded static SDL3    |
 | iOS        | `iosArm64`, `iosX64`, `iosSimulatorArm64`           | cinterop + embedded static SDL3    |
 | tvOS       | `tvosArm64`, `tvosSimulatorArm64`                   | cinterop + embedded static SDL3    |
@@ -28,7 +28,7 @@ Not supported: watchOS (SDL3 has no watchOS support) and visionOS (Kotlin/Native
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("cn.enaium.sdl:sdl-kmp:1.0.6")
+            implementation("cn.enaium.sdl:sdl-kmp:1.0.7")
         }
     }
 }
@@ -79,6 +79,7 @@ fun main() {
 - Native: call `SDL.setMainReady()` before `SDL.init` on the main thread. It is only
   **required on Apple platforms** (macOS/iOS/tvOS); on Linux/Windows it is a harmless
   no-op that records the calling thread as the main thread and never blocks.
+- **Linux arm64**: the `linuxArm64` target is built on Linux aarch64 hosts or cross-compiled from x86_64 with the `aarch64-linux-gnu` toolchain (`gcc-aarch64-linux-gnu g++-aarch64-linux-gnu`); SDL3's dlopen-based drivers only need the arch-agnostic headers, so no multiarch sysroot is required.
 - **Linux headless / CI**: with no (or an unreachable) `DISPLAY`, `SDL.init(SDL_INIT_VIDEO)`
   can block while `XOpenDisplay` tries to connect. Set `SDL_VIDEO_DRIVER=dummy` (hint or
   environment variable) before init, or export `DISPLAY` correctly.
@@ -223,8 +224,8 @@ install these automatically.
 
 ## GitHub Actions
 
-- `.github/workflows/test.yml` — manual trigger: macOS builds all Apple klibs and the `darwin` JNI artifacts and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `mingwX64`, builds the `linux-x86_64`/`linux-aarch64` JNI artifacts, and runs the renderer example headless; Windows builds the `windows-x86_64` JNI artifact natively (MinGW) and runs JVM tests; Android installs the NDK, builds the four `androidNative` klibs and assembles the `sdl_renderer`/`sdl_gpu` APKs; Web installs the Emscripten SDK, builds the `wasmJs` klib and the browser example.
-- `.github/workflows/publish.yml` — manual workflow that publishes the metadata + JVM + Apple klibs and the `sdl-kmp-jni-jvm-darwin-*` artifacts from `macos-14`, the `linuxX64`/`mingwX64` klibs and the `sdl-kmp-jni-jvm-linux-*` artifacts from `ubuntu-latest`, `sdl-kmp-jni-jvm-windows-x86_64` from `windows-latest` (native MinGW build), and the four `androidNative` klibs from `ubuntu-latest` (with the NDK) to Maven Central.
+- `.github/workflows/test.yml` — manual trigger: macOS builds all Apple klibs and the `darwin` JNI artifacts and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `linuxArm64`/`mingwX64`, builds the `linux-*` JNI artifacts, and runs the renderer example headless; Windows builds the `windows-x86_64` JNI artifact natively (MinGW) and runs JVM tests; Android installs the NDK, builds the four `androidNative` klibs and assembles the `sdl_renderer`/`sdl_gpu` APKs; Web installs the Emscripten SDK, builds the `wasmJs` klib and the browser example.
+- `.github/workflows/publish.yml` — manual workflow that publishes the metadata + JVM + Apple klibs and the `sdl-kmp-jni-jvm-darwin-*` artifacts from `macos-14`, the `linuxX64`/`linuxArm64`/`mingwX64` klibs and the `sdl-kmp-jni-jvm-linux-*` artifacts from `ubuntu-latest`, `sdl-kmp-jni-jvm-windows-x86_64` from `windows-latest` (native MinGW build), and the four `androidNative` klibs from `ubuntu-latest` (with the NDK) to Maven Central.
 
 Required secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` (base64 GPG keyring), `SIGNING_KEY_ID`, `SIGNING_PASSWORD`.
 

@@ -124,6 +124,7 @@ jobs:
           -Psigning.password="${{ secrets.SIGNING_PASSWORD }}"
           :sdl-kmp:publishKotlinMultiplatformPublicationToMavenLocal
           :sdl-kmp:publishLinuxX64PublicationToMavenLocal
+          :sdl-kmp:publishLinuxArm64PublicationToMavenLocal
           :sdl-kmp:publishMingwX64PublicationToMavenLocal
           :jni-jvm-linux-x86_64:publishToMavenLocal
           :jni-jvm-windows-x86_64:publishToMavenLocal
