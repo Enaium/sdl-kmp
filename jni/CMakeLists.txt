@@ -37,6 +37,12 @@ add_library(sdl_jni SHARED
 )
 set_target_properties(sdl_jni PROPERTIES OUTPUT_NAME sdl_jni)
 
+# SDL_main.h redefines main to SDL_main on Windows (and Unix builds link
+# SDL's own SDL_main stub); this is a library, not an executable, so tell SDL
+# the main() handling is the application's business (same as the cinterop
+# compilerOpts in sdl.def).
+target_compile_definitions(sdl_jni PRIVATE SDL_MAIN_HANDLED)
+
 target_include_directories(sdl_jni PRIVATE
     ${SDL_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}
