@@ -165,7 +165,7 @@ drivers).
 ./gradlew :jni-jvm-darwin-aarch64:publishToMavenLocal :jni-jvm-darwin-x86_64:publishToMavenLocal   # macOS
 ./gradlew :jni-jvm-linux-x86_64:publishToMavenLocal                                                 # Linux
 ./gradlew :jni-jvm-linux-aarch64:publishToMavenLocal                                               # Linux (aarch64 host or cross)
-./gradlew :jni-jvm-windows-x86_64:publishToMavenLocal                                               # Windows (MinGW)
+./gradlew :jni-jvm-windows-x86_64:publishToMavenLocal                                               # Windows (MinGW host)
 
 # JVM (pass SDL_VIDEO_DRIVER=dummy for headless mode)
 ./gradlew :examples:sdl_renderer:jvmRun
