@@ -70,7 +70,7 @@ set_target_properties(SDL3-static PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # symbols by default (kept explicit below for the JNI DLLs).
 set_target_properties(SDL3-static PROPERTIES C_VISIBILITY_PRESET default)
 if(UNIX AND NOT APPLE)
-    target_link_options(sdl_jni PRIVATE -Wl,--export-dynamic-symbol-regex=^SDL_)
+    target_link_options(sdl_jni PRIVATE -Wl,--export-dynamic-symbol=SDL_*)
 endif()
 if(WIN32)
     target_link_options(sdl_jni PRIVATE -Wl,--export-all-symbols)
