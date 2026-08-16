@@ -63,6 +63,19 @@ endif()
 # OpenXR/X11 dlopen stubs otherwise fail to link into a .so).
 set_target_properties(SDL3-static PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# sdl-ttf-kmp's libsdl_ttf_jni resolves the SDL3 symbols at runtime from this
+# library (a single SDL3 instance per process). SDL3 builds with hidden
+# visibility on Linux, so compile it with default visibility and export the
+# SDL_* symbols; macOS exports them by default and MinGW exports all global
+# symbols by default (kept explicit below for the JNI DLLs).
+set_target_properties(SDL3-static PROPERTIES C_VISIBILITY_PRESET default)
+if(UNIX AND NOT APPLE)
+    target_link_options(sdl_jni PRIVATE -Wl,--export-dynamic-symbol-regex=^SDL_)
+endif()
+if(WIN32)
+    target_link_options(sdl_jni PRIVATE -Wl,--export-all-symbols)
+endif()
+
 # SDL3-static propagates its (LINK_ONLY) dependencies - the macOS frameworks,
 # the Windows system libraries and -lm/-ldl/-lpthread on Linux - so the JNI
 # shared library links everything SDL3 needs.
