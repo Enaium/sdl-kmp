@@ -188,48 +188,31 @@ internal class JvmSDLGPURenderPass internal constructor(ptr: Long) : SDLGPURende
 
     override fun bindVertexBuffers(vararg buffers: Pair<SDLGPUBuffer, Int>) {
         if (buffers.isEmpty()) return
-        val ptrs = LongArray(buffers.size) { i ->
-            (buffers[i].first as? JvmSDLGPUBuffer)?.ptr
-                ?: throw IllegalArgumentException("buffer is not a JVM SDL GPU buffer")
-        }
+        val ptrs = LongArray(buffers.size) { i -> buffers[i].first.ptr }
         val offsets = IntArray(buffers.size) { buffers[it].second }
         Jni.gpuBindVertexBuffers(check(), ptrs, offsets)
     }
 
     override fun bindIndexBuffer(buffer: SDLGPUBuffer, indexSize: Int) {
-        val b = buffer as? JvmSDLGPUBuffer
-            ?: throw IllegalArgumentException("buffer is not a JVM SDL GPU buffer")
-        Jni.gpuBindIndexBuffer(check(), b.ptr, indexSize)
+        Jni.gpuBindIndexBuffer(check(), buffer.ptr, indexSize)
     }
 
     override fun bindGraphicsSamplers(slot: Int, vararg samplers: SDLGPUSampler) {
         if (samplers.isEmpty()) return
-        val ptrs = LongArray(samplers.size) { i ->
-            (samplers[i] as? JvmSDLGPUSampler)?.ptr
-                ?: throw IllegalArgumentException("sampler is not a JVM SDL GPU sampler")
-        }
+        val ptrs = LongArray(samplers.size) { i -> samplers[i].ptr }
         Jni.gpuBindFragmentSamplers(check(), slot, LongArray(ptrs.size), ptrs)
     }
 
     override fun bindGraphicsTextures(slot: Int, vararg textures: SDLGPUTexture) {
         if (textures.isEmpty()) return
-        val ptrs = LongArray(textures.size) { i ->
-            (textures[i] as? JvmSDLGPUTexture)?.ptr
-                ?: throw IllegalArgumentException("texture is not a JVM SDL GPU texture")
-        }
+        val ptrs = LongArray(textures.size) { i -> textures[i].ptr }
         Jni.gpuBindFragmentSamplers(check(), slot, ptrs, LongArray(ptrs.size))
     }
 
     override fun bindGraphicsTextureSamplers(slot: Int, vararg bindings: Pair<SDLGPUTexture, SDLGPUSampler>) {
         if (bindings.isEmpty()) return
-        val textures = LongArray(bindings.size) { i ->
-            (bindings[i].first as? JvmSDLGPUTexture)?.ptr
-                ?: throw IllegalArgumentException("texture is not a JVM SDL GPU texture")
-        }
-        val samplers = LongArray(bindings.size) { i ->
-            (bindings[i].second as? JvmSDLGPUSampler)?.ptr
-                ?: throw IllegalArgumentException("sampler is not a JVM SDL GPU sampler")
-        }
+        val textures = LongArray(bindings.size) { i -> bindings[i].first.ptr }
+        val samplers = LongArray(bindings.size) { i -> bindings[i].second.ptr }
         Jni.gpuBindFragmentSamplers(check(), slot, textures, samplers)
     }
 

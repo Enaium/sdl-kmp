@@ -295,7 +295,7 @@ internal class NativeSDLGPURenderPass internal constructor(
         val bindings = allocArray<SDL_GPUBufferBinding>(buffers.size)
         for (i in buffers.indices) {
             val (buffer, offset) = buffers[i]
-            bindings[i].buffer = (buffer as? NativeSDLGPUBuffer)?.raw
+            bindings[i].buffer = buffer.nativePtr
                 ?: throw IllegalArgumentException("buffer is not a native SDL GPU buffer")
             bindings[i].offset = offset.toUInt()
         }
@@ -303,7 +303,7 @@ internal class NativeSDLGPURenderPass internal constructor(
     }
 
     override fun bindIndexBuffer(buffer: SDLGPUBuffer, indexSize: Int) {
-        val b = (buffer as? NativeSDLGPUBuffer)?.raw
+        val b = buffer.nativePtr
             ?: throw IllegalArgumentException("buffer is not a native SDL GPU buffer")
         memScoped {
             val binding = alloc<SDL_GPUBufferBinding>()
@@ -322,7 +322,7 @@ internal class NativeSDLGPURenderPass internal constructor(
         if (samplers.isEmpty()) return
         val arr = allocArray<SDL_GPUTextureSamplerBinding>(samplers.size)
         for (i in samplers.indices) {
-            arr[i].sampler = (samplers[i] as? NativeSDLGPUSampler)?.raw
+            arr[i].sampler = samplers[i].nativePtr
                 ?: throw IllegalArgumentException("sampler is not a native SDL GPU sampler")
         }
         SDL_BindGPUFragmentSamplers(check(), slot.toUInt(), arr, samplers.size.toUInt())
@@ -332,7 +332,7 @@ internal class NativeSDLGPURenderPass internal constructor(
         if (textures.isEmpty()) return
         val arr = allocArray<SDL_GPUTextureSamplerBinding>(textures.size)
         for (i in textures.indices) {
-            arr[i].texture = (textures[i] as? NativeSDLGPUTexture)?.raw
+            arr[i].texture = textures[i].nativePtr
                 ?: throw IllegalArgumentException("texture is not a native SDL GPU texture")
             arr[i].sampler = null
         }
@@ -344,9 +344,9 @@ internal class NativeSDLGPURenderPass internal constructor(
         val arr = allocArray<SDL_GPUTextureSamplerBinding>(bindings.size)
         for (i in bindings.indices) {
             val (texture, sampler) = bindings[i]
-            arr[i].texture = (texture as? NativeSDLGPUTexture)?.raw
+            arr[i].texture = texture.nativePtr
                 ?: throw IllegalArgumentException("texture is not a native SDL GPU texture")
-            arr[i].sampler = (sampler as? NativeSDLGPUSampler)?.raw
+            arr[i].sampler = sampler.nativePtr
                 ?: throw IllegalArgumentException("sampler is not a native SDL GPU sampler")
         }
         SDL_BindGPUFragmentSamplers(check(), slot.toUInt(), arr, bindings.size.toUInt())
@@ -394,7 +394,7 @@ internal class NativeSDLGPUCommandBuffer internal constructor(
         val targets = allocArray<SDL_GPUColorTargetInfo>(colorTargets.size)
         for (i in colorTargets.indices) {
             val t = colorTargets[i]
-            targets[i].texture = (t.texture as? NativeSDLGPUTexture)?.raw
+            targets[i].texture = t.texture.nativePtr
                 ?: throw IllegalArgumentException("color target texture is not a native SDL GPU texture")
             targets[i].mip_level = t.mipLevel.toUInt()
             targets[i].layer_or_depth_plane = t.layerOrDepthPlane.toUInt()
@@ -422,7 +422,7 @@ internal class NativeSDLGPUCommandBuffer internal constructor(
     }
 
     override fun uploadToBuffer(buffer: SDLGPUBuffer, data: ByteArray, offset: Int): Boolean = memScoped {
-        val native = (buffer as? NativeSDLGPUBuffer)?.raw
+        val native = buffer.nativePtr
             ?: throw IllegalArgumentException("buffer is not a native SDL GPU buffer")
         if (offset + data.size > buffer.size) return false
         val dev = device.raw ?: return false
