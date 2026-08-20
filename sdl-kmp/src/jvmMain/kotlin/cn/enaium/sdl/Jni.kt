@@ -209,6 +209,11 @@ internal object Jni {
     // =========================================================================
 
     external fun getTextureSize(texture: Long): FloatArray
+    external fun getTextureColorMod(texture: Long): IntArray?
+    external fun getTextureAlphaMod(texture: Long): Int
+    external fun getTextureBlendMode(texture: Long): Int
+    external fun getTextureScaleMode(texture: Long): Int
+    external fun getTextureProperties(texture: Long): IntArray?
     external fun setTextureColorMod(texture: Long, r: Int, g: Int, b: Int): Boolean
     external fun setTextureAlphaMod(texture: Long, a: Int): Boolean
     external fun setTextureBlendMode(texture: Long, mode: Int): Boolean

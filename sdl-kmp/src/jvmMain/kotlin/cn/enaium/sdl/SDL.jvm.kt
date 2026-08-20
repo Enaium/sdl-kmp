@@ -1203,10 +1203,16 @@ internal class JvmSDLTexture internal constructor(
         texture.also { if (it == 0L) throw IllegalStateException("SDL texture is closed") }
 
     override val format: Int
-        get() = throw UnsupportedOperationException("texture format is not queryable")
+        get() {
+            val p = Jni.getTextureProperties(check())
+            return p?.get(0) ?: 0
+        }
 
     override val access: Int
-        get() = throw UnsupportedOperationException("texture access is not queryable")
+        get() {
+            val p = Jni.getTextureProperties(check())
+            return p?.get(1) ?: 0
+        }
 
     override val size: SDLFloatPoint
         get() {
@@ -1215,25 +1221,28 @@ internal class JvmSDLTexture internal constructor(
         }
 
     override var colorMod: SDLColor
-        get() = throw UnsupportedOperationException("texture color mod is not queryable")
+        get() {
+            val c = Jni.getTextureColorMod(check()) ?: return SDLColor(255, 255, 255)
+            return SDLColor(c[0], c[1], c[2])
+        }
         set(value) {
             Jni.setTextureColorMod(check(), value.r, value.g, value.b)
         }
 
     override var alphaMod: Int
-        get() = throw UnsupportedOperationException("texture alpha mod is not queryable")
+        get() = Jni.getTextureAlphaMod(check()).takeIf { it >= 0 } ?: 255
         set(value) {
             Jni.setTextureAlphaMod(check(), value)
         }
 
     override var blendMode: Int
-        get() = throw UnsupportedOperationException("texture blend mode is not queryable")
+        get() = Jni.getTextureBlendMode(check()).takeIf { it >= 0 } ?: SDLBlendMode.BLEND
         set(value) {
             Jni.setTextureBlendMode(check(), value)
         }
 
     override var scaleMode: Int
-        get() = throw UnsupportedOperationException("texture scale mode is not queryable")
+        get() = Jni.getTextureScaleMode(check()).takeIf { it >= 0 } ?: SDLScaleMode.LINEAR
         set(value) {
             Jni.setTextureScaleMode(check(), value)
         }

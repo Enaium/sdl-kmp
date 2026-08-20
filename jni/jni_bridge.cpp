@@ -804,6 +804,38 @@ SDLJNI_FUNC(jboolean) SDLJNI_NAME(setTextureScaleMode)(JNIEnv *, jclass, jlong t
                : JNI_FALSE;
 }
 
+SDLJNI_FUNC(jintArray) SDLJNI_NAME(getTextureColorMod)(JNIEnv *env, jclass, jlong texture) {
+    Uint8 r = 0, g = 0, b = 0;
+    if (!SDL_GetTextureColorMod(reinterpret_cast<SDL_Texture *>(texture), &r, &g, &b)) {
+        return nullptr;
+    }
+    return sdl_kmp_jni_new_int_array(env, {static_cast<jint>(r), static_cast<jint>(g), static_cast<jint>(b)});
+}
+
+SDLJNI_FUNC(jint) SDLJNI_NAME(getTextureAlphaMod)(JNIEnv *, jclass, jlong texture) {
+    Uint8 a = 0;
+    if (!SDL_GetTextureAlphaMod(reinterpret_cast<SDL_Texture *>(texture), &a)) {
+        return -1;
+    }
+    return static_cast<jint>(a);
+}
+
+SDLJNI_FUNC(jint) SDLJNI_NAME(getTextureBlendMode)(JNIEnv *, jclass, jlong texture) {
+    SDL_BlendMode mode;
+    if (!SDL_GetTextureBlendMode(reinterpret_cast<SDL_Texture *>(texture), &mode)) {
+        return -1;
+    }
+    return static_cast<jint>(mode);
+}
+
+SDLJNI_FUNC(jint) SDLJNI_NAME(getTextureScaleMode)(JNIEnv *, jclass, jlong texture) {
+    SDL_ScaleMode mode;
+    if (!SDL_GetTextureScaleMode(reinterpret_cast<SDL_Texture *>(texture), &mode)) {
+        return -1;
+    }
+    return static_cast<jint>(mode);
+}
+
 SDLJNI_FUNC(jboolean) SDLJNI_NAME(updateTexture)(JNIEnv *env, jclass, jlong texture,
                                                  jintArray rectArr, jbyteArray pixels, jint pitch) {
     std::vector<jint> v;
@@ -854,6 +886,16 @@ SDLJNI_FUNC(void) SDLJNI_NAME(unlockTexture)(JNIEnv *, jclass, jlong texture) {
 
 SDLJNI_FUNC(void) SDLJNI_NAME(destroyTexture)(JNIEnv *, jclass, jlong texture) {
     SDL_DestroyTexture(reinterpret_cast<SDL_Texture *>(texture));
+}
+
+SDLJNI_FUNC(jintArray) SDLJNI_NAME(getTextureProperties)(JNIEnv *env, jclass, jlong texture) {
+    SDL_PropertiesID props = SDL_GetTextureProperties(reinterpret_cast<SDL_Texture *>(texture));
+    if (props == 0) {
+        return nullptr;
+    }
+    jint format = static_cast<jint>(SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_FORMAT_NUMBER, 0));
+    jint access = static_cast<jint>(SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_ACCESS_NUMBER, 0));
+    return sdl_kmp_jni_new_int_array(env, {format, access});
 }
 
 // ===========================================================================

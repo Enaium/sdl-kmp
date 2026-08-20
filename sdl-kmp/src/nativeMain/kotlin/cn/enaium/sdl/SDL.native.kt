@@ -821,10 +821,18 @@ internal class NativeSDLTexture internal constructor(
         raw ?: throw IllegalStateException("SDL texture is closed")
 
     override val format: Int
-        get() = throw UnsupportedOperationException("texture format is not queryable")
+        get() {
+            val props = SDL_GetTextureProperties(check())
+            if (props == 0u) return 0
+            return SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_FORMAT_NUMBER, 0).toInt()
+        }
 
     override val access: Int
-        get() = throw UnsupportedOperationException("texture access is not queryable")
+        get() {
+            val props = SDL_GetTextureProperties(check())
+            if (props == 0u) return 0
+            return SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_ACCESS_NUMBER, 0).toInt()
+        }
 
     override val size: SDLFloatPoint
         get() = memScoped {
@@ -835,7 +843,13 @@ internal class NativeSDLTexture internal constructor(
         }
 
     override var colorMod: SDLColor
-        get() = throw UnsupportedOperationException("texture color mod is not queryable")
+        get() = memScoped {
+            val r = alloc<UByteVar>()
+            val g = alloc<UByteVar>()
+            val b = alloc<UByteVar>()
+            SDL_GetTextureColorMod(check(), r.ptr, g.ptr, b.ptr)
+            SDLColor(r.value.toInt(), g.value.toInt(), b.value.toInt())
+        }
         set(value) {
             SDL_SetTextureColorMod(
                 check(),
@@ -846,19 +860,31 @@ internal class NativeSDLTexture internal constructor(
         }
 
     override var alphaMod: Int
-        get() = throw UnsupportedOperationException("texture alpha mod is not queryable")
+        get() = memScoped {
+            val a = alloc<UByteVar>()
+            SDL_GetTextureAlphaMod(check(), a.ptr)
+            a.value.toInt()
+        }
         set(value) {
             SDL_SetTextureAlphaMod(check(), value.toUByte())
         }
 
     override var blendMode: Int
-        get() = throw UnsupportedOperationException("texture blend mode is not queryable")
+        get() = memScoped {
+            val mode = alloc<SDL_BlendModeVar>()
+            SDL_GetTextureBlendMode(check(), mode.ptr)
+            mode.value.toInt()
+        }
         set(value) {
             SDL_SetTextureBlendMode(check(), value.toUInt())
         }
 
     override var scaleMode: Int
-        get() = throw UnsupportedOperationException("texture scale mode is not queryable")
+        get() = memScoped {
+            val mode = alloc<IntVar>()
+            SDL_GetTextureScaleMode(check(), mode.ptr)
+            mode.value
+        }
         set(value) {
             SDL_SetTextureScaleMode(check(), value)
         }
