@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.android.kmp.library)
     alias(libs.plugins.maven.publish)
 }
 
@@ -132,6 +133,26 @@ kotlin {
         }
     }
 
+    // ==================== Android (JVM) ====================
+    // The Android target shares the JVM implementation: androidMain reuses
+    // src/jvmMain (JNI bridge via libsdl_jni.so) and depends on the
+    // sdl-kmp-android-jvm AAR, which bundles SDL's own android-project Java
+    // layer (org.libsdl.app.SDLActivity & co) plus the per-ABI native
+    // libraries. Consumers therefore get everything from `sdl-kmp` alone.
+    android {
+        namespace = "cn.enaium.sdl"
+        compileSdk = 36
+        minSdk = 24
+
+        compilations.configureEach {
+            compileTaskProvider.configure {
+                compilerOptions {
+                    jvmTarget.set(JvmTarget.JVM_21)
+                }
+            }
+        }
+    }
+
     // ==================== Native ====================
     macosArm64()
     macosX64()
@@ -223,6 +244,18 @@ kotlin {
             dependencies {
                 implementation(libs.junit.jupiter)
                 runtimeOnly(libs.junit.platform.launcher)
+            }
+        }
+
+        getByName("androidMain") {
+            // Share the same JNI source code with JVM. On Android the
+            // NativeLoader falls back to System.loadLibrary since the .so is
+            // bundled inside the sdl-kmp-android-jvm AAR's jniLibs.
+            kotlin.srcDir("src/jvmMain/kotlin")
+            dependencies {
+                // Brings org.libsdl.app.SDLActivity & friends and the per-ABI
+                // libsdl_jni.so into the consumer's APK.
+                api(project(":android-jvm"))
             }
         }
 
