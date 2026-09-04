@@ -2011,6 +2011,8 @@ actual object SDL {
 
     actual fun showCursor(): Boolean = SDL_ShowCursor()
 
+    actual fun hideCursor(): Boolean = SDL_HideCursor()
+
     // ==================== joystick / gamepad ====================
 
     actual val joysticks: List<Int>

@@ -385,6 +385,7 @@ internal external fun sdl_kmp_GetGlobalMouseState()
 internal external fun sdl_kmp_WarpMouseInWindow(windowID: Int, x: Double, y: Double)
 internal external fun sdl_kmp_CaptureMouse(enabled: Int): Int
 internal external fun sdl_kmp_ShowCursor(): Int
+internal external fun sdl_kmp_HideCursor(): Int
 internal external fun sdl_kmp_TextInputActive(windowID: Int): Int
 internal external fun sdl_kmp_StartTextInput(windowID: Int): Int
 internal external fun sdl_kmp_StopTextInput(windowID: Int): Int

@@ -417,6 +417,7 @@ internal object Jni {
     external fun warpMouseInWindow(window: Long, x: Float, y: Float)
     external fun captureMouse(enabled: Boolean): Boolean
     external fun showCursor(): Boolean
+    external fun hideCursor(): Boolean
 
     // =========================================================================
     // Touch

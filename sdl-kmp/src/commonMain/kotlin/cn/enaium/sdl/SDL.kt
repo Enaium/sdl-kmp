@@ -625,8 +625,11 @@ expect object SDL {
     /** Captures the mouse so events keep coming when the cursor leaves the window. */
     fun captureMouse(enabled: Boolean): Boolean
 
-    /** Toggles the cursor visibility; returns true when it is shown. */
+    /** Shows the cursor; returns true when it is shown. */
     fun showCursor(): Boolean
+
+    /** Hides the cursor; returns true when it was hidden. */
+    fun hideCursor(): Boolean
 
     // ==================== joystick / gamepad ====================
 

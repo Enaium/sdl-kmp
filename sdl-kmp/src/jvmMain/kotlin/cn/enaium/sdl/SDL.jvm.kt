@@ -987,6 +987,8 @@ actual object SDL {
 
     actual fun showCursor(): Boolean = Jni.showCursor()
 
+    actual fun hideCursor(): Boolean = Jni.hideCursor()
+
     // ==================== joystick / gamepad ====================
 
     actual val joysticks: List<Int>

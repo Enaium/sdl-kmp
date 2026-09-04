@@ -786,6 +786,7 @@ void sdl_kmp_GetGlobalMouseState(float *x, float *y, int *buttons)
 void sdl_kmp_WarpMouseInWindow(int windowID, float x, float y) { SDL_WarpMouseInWindow(SDL_GetWindowFromID(windowID), x, y); }
 int sdl_kmp_CaptureMouse(int enabled) { return SDL_CaptureMouse(enabled); }
 int sdl_kmp_ShowCursor(void) { return SDL_ShowCursor(); }
+int sdl_kmp_HideCursor(void) { return SDL_HideCursor(); }
 
 int sdl_kmp_TextInputActive(int windowID) { return SDL_TextInputActive(SDL_GetWindowFromID(windowID)); }
 int sdl_kmp_StartTextInput(int windowID) { return SDL_StartTextInput(SDL_GetWindowFromID(windowID)); }

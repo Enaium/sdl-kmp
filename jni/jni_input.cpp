@@ -109,6 +109,10 @@ SDLJNI_FUNC(jboolean) SDLJNI_NAME(showCursor)(JNIEnv *, jclass) {
     return SDL_ShowCursor() ? JNI_TRUE : JNI_FALSE;
 }
 
+SDLJNI_FUNC(jboolean) SDLJNI_NAME(hideCursor)(JNIEnv *, jclass) {
+    return SDL_HideCursor() ? JNI_TRUE : JNI_FALSE;
+}
+
 // ===========================================================================
 // Touch
 // ===========================================================================

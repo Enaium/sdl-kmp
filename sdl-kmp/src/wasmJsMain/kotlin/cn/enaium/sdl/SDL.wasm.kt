@@ -1219,6 +1219,8 @@ actual object SDL {
 
     actual fun showCursor(): Boolean = sdl_kmp_ShowCursor() != 0
 
+    actual fun hideCursor(): Boolean = sdl_kmp_HideCursor() != 0
+
     // ==================== joystick / gamepad ====================
 
     actual val joysticks: List<Int>
