@@ -21,6 +21,10 @@ name: Publish
 #                    static library; mingwX64 is cross-compiled)
 #   ubuntu-latest -> :sdl-kmp androidNative klibs (arm64/arm32/x64/x86, with
 #                    the embedded static library built via the Android NDK)
+#                    + the :sdl-kmp android AAR (sdl-kmp-android, the KMP
+#                    Android/JVM target that depends on sdl-kmp-android-jvm)
+#                    + the android-jvm AAR (org.libsdl.app.SDLActivity and
+#                    the per-ABI libsdl_jni.so, built with the NDK)
 #   ubuntu-latest -> :sdl-kmp wasmJs klib + :sdl-kmp:wasm assets
 #                    (Emscripten-compiled SDL3 module sdl_wasm.js/.wasm +
 #                    sdl_kmp_glue.js; the wasmJs target has no cinterop, so
@@ -153,7 +157,7 @@ jobs:
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
 
   publish-android:
-    name: Publish Android (androidNative klibs)
+    name: Publish Android (androidNative klibs + android-jvm AAR)
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -168,10 +172,12 @@ jobs:
           java-version: 21
 
       # The androidNative klibs embed the SDL3 static library, which is
-      # cross-compiled with the Android NDK.
+      # cross-compiled with the Android NDK. The android-jvm AAR also needs
+      # the NDK (to build libsdl_jni.so for all four ABIs) and the
+      # android-36 platform (compileSdk 36).
       - name: Install Android NDK
         run: |
-          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.0.12077973" >/dev/null
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.0.12077973" "platforms;android-36" >/dev/null
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -186,7 +192,7 @@ jobs:
           ls -la "$RUNNER_TEMP/signing-key.gpg"
           head -c 16 "$RUNNER_TEMP/signing-key.gpg" | od -c | head -2
 
-      - name: Publish androidNative klibs
+      - name: Publish androidNative klibs and the android-jvm AAR
         run: >
           ./gradlew --no-daemon --stacktrace
           -Psigning.keyId="${{ secrets.SIGNING_KEY_ID }}"
@@ -196,6 +202,8 @@ jobs:
           :sdl-kmp:publishAndroidNativeArm32PublicationToMavenCentralRepository
           :sdl-kmp:publishAndroidNativeX64PublicationToMavenCentralRepository
           :sdl-kmp:publishAndroidNativeX86PublicationToMavenCentralRepository
+          :sdl-kmp:publishAndroidPublicationToMavenCentralRepository
+          :android-jvm:publishMavenPublicationToMavenCentralRepository
           --continue
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
