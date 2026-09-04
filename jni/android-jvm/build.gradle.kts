@@ -160,9 +160,12 @@ abstract class PrepareJniLibsTask : DefaultTask() {
 
 ndkPath?.let { ndk ->
     val toolchain = "$ndk/build/cmake/android.toolchain.cmake"
-    val javaHome = System.getProperty("java.home") ?: System.getenv("JAVA_HOME") ?: ""
-    val jniInclude = if (javaHome.isNotEmpty()) "$javaHome/include" else ""
-    val jniIncludePlatform = if (javaHome.isNotEmpty()) "$javaHome/include/darwin" else ""
+
+    // No -DJNI_INCLUDE_DIR* here: the NDK sysroot ships a self-contained
+    // jni.h (sysroot/usr/include) that is on the compiler's default include
+    // path, and the host JDK's headers (jni_md.h lives in host-specific
+    // subdirs like include/darwin or include/linux) are wrong for Android
+    // cross-compilation anyway.
 
     androidAbis.forEach { (_, abi) ->
         val buildDir = layout.buildDirectory.dir("cmake-jni/$abi")
@@ -182,9 +185,13 @@ ndkPath?.let { ndk ->
                 "-DANDROID_ABI=$abi",
                 "-DANDROID_PLATFORM=android-24",
                 "-DANDROID_STL=c++_static",
-                "-DJNI_INCLUDE_DIR=$jniInclude",
-                "-DJNI_INCLUDE_DIR_PLATFORM=$jniIncludePlatform",
+                "-DANDROID_JNI=ON",
                 "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=${buildDir.get().asFile.absolutePath}",
+                // Drop stale cache entries from earlier builds that passed
+                // the host JDK's JNI include dirs (a leftover CMakeCache
+                // would otherwise keep adding them to every compile).
+                "-UJNI_INCLUDE_DIR",
+                "-UJNI_INCLUDE_DIR_PLATFORM",
             )
         }
 

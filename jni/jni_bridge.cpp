@@ -62,8 +62,15 @@ JNIEnv *sdl_kmp_jni_get_env() {
         return nullptr;
     }
     JNIEnv *env = nullptr;
+    // GetEnv is declared void** in both the host JDK's and the NDK's jni.h.
     if (g_vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK) {
+#if defined(__ANDROID__)
+        // The NDK's jni.h declares AttachCurrentThread with JNIEnv** (the
+        // host JDK's uses void**), so pass &env directly here.
+        g_vm->AttachCurrentThread(&env, nullptr);
+#else
         g_vm->AttachCurrentThread(reinterpret_cast<void **>(&env), nullptr);
+#endif
     }
     return env;
 }

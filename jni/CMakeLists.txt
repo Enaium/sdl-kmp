@@ -48,7 +48,13 @@ target_include_directories(sdl_jni PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-if(JNI_INCLUDE_DIR)
+if(ANDROID_JNI)
+    # Android NDK (set by jni/android-jvm/build.gradle.kts): the sysroot
+    # ships a self-contained jni.h (sysroot/usr/include) on the compiler's
+    # default include path. The host JDK's headers are wrong for
+    # cross-compilation (jni_md.h lives in host-specific subdirs and
+    # reflects the host platform), so skip JNI lookup entirely.
+elseif(JNI_INCLUDE_DIR)
     target_include_directories(sdl_jni PRIVATE ${JNI_INCLUDE_DIR})
 else()
     find_package(JNI REQUIRED)
