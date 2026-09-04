@@ -2,7 +2,6 @@
 
 [![License](https://img.shields.io/github/license/Enaium/sdl-kmp)](LICENSE)
 [![Maven Central](https://img.shields.io/maven-central/v/cn.enaium.sdl/sdl-kmp)](https://central.sonatype.com/artifact/cn.enaium.sdl/sdl-kmp)
-[![Maven Central (android-jvm)](https://img.shields.io/maven-central/v/cn.enaium.sdl/sdl-kmp-android-jvm)](https://central.sonatype.com/artifact/cn.enaium.sdl/sdl-kmp-android-jvm)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.4.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![Platforms](https://img.shields.io/badge/platform-JVM%20%7C%20Native%20%7C%20Wasm%20%7C%20Android-6A4C93)]()
 
