@@ -1,9 +1,18 @@
 # sdl-kmp
 
-Kotlin Multiplatform bindings for [SDL3](https://github.com/libsdl-org/SDL), with a curated common API backed by two implementations:
+[![License](https://img.shields.io/github/license/Enaium/sdl-kmp)](LICENSE)
+[![Maven Central](https://img.shields.io/maven-central/v/cn.enaium.sdl/sdl-kmp)](https://central.sonatype.com/artifact/cn.enaium.sdl/sdl-kmp)
+[![Maven Central (android-jvm)](https://img.shields.io/maven-central/v/cn.enaium.sdl/sdl-kmp-android-jvm)](https://central.sonatype.com/artifact/cn.enaium.sdl/sdl-kmp-android-jvm)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.4.0-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Platforms](https://img.shields.io/badge/platform-JVM%20%7C%20Native%20%7C%20Wasm%20%7C%20Android-6A4C93)]()
+
+Kotlin Multiplatform bindings for [SDL3](https://github.com/libsdl-org/SDL), with a curated common API backed by three implementations:
 
 - **JVM**: SDL3 is compiled from this repository's `SDL` submodule into a JNI shared library (`libsdl_jni`) that is built by CMake (`jni/`) and shipped as per-OS/arch `sdl-kmp-jni-jvm-*` artifacts. `NativeLoader` extracts the matching binary at runtime, so consumers need nothing beyond the normal dependencies (no LWJGL, no system SDL).
 - **Native (Kotlin/Native)**: the SDL3 static library from this repository's `SDL` submodule is compiled per target with CMake and **embedded into the published klib**, so consumers get a fully self-contained binary (no dynamic SDL3 dependency). This includes the Android native targets (`androidNative*`), cross-compiled with the Android NDK.
+- **Android (JVM)**: a separate Android AAR (`sdl-kmp-android-jvm`) packages SDL's own `android-project` Java layer (`org.libsdl.app.SDLActivity` and friends) together with the per-ABI `libsdl_jni.so` (SDL3 + JNI bridge, built with the NDK from the same `jni/` sources). Consumers just extend `SDLActivity` — no SDL Java code to copy.
+
+All three implementations build SDL3 from the pinned `SDL` submodule; the fixes that must not live in the submodule history are kept under `patches/` and applied idempotently at build time (`applySubmodulePatches`) before any task that compiles the SDL sources.
 
 ## Supported platforms
 
@@ -15,7 +24,8 @@ Kotlin Multiplatform bindings for [SDL3](https://github.com/libsdl-org/SDL), wit
 | Windows    | `mingwX64`                                          | cinterop + embedded static SDL3    |
 | iOS        | `iosArm64`, `iosX64`, `iosSimulatorArm64`           | cinterop + embedded static SDL3    |
 | tvOS       | `tvosArm64`, `tvosSimulatorArm64`                   | cinterop + embedded static SDL3    |
-| Android    | `androidNativeArm64`, `androidNativeArm32`, `androidNativeX64`, `androidNativeX86` | cinterop + embedded static SDL3 (built with the NDK) |
+| Android (native) | `androidNativeArm64`, `androidNativeArm32`, `androidNativeX64`, `androidNativeX86` | cinterop + embedded static SDL3 (built with the NDK) |
+| Android (JVM) | `sdl-kmp-android-jvm` AAR (`arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86`) | SDL `android-project` Java layer + per-ABI `libsdl_jni.so` |
 | Web (browser) | `wasmJs`                                        | SDL3 compiled to a standalone Emscripten module, driven through a JS bridge |
 
 Not supported: watchOS (SDL3 has no watchOS support) and visionOS (Kotlin/Native has no visionOS targets yet).
@@ -28,7 +38,7 @@ Not supported: watchOS (SDL3 has no watchOS support) and visionOS (Kotlin/Native
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("cn.enaium.sdl:sdl-kmp:1.0.7")
+            implementation("cn.enaium.sdl:sdl-kmp:1.0.10")
         }
     }
 }
@@ -91,7 +101,8 @@ fun main() {
 - **macOS JVM**: requires `-XstartOnFirstThread` JVM argument (so AppKit/Cocoa can initialise). The example `runJvm` tasks already set this.
 - **JVM native library**: the matching `sdl-kmp-jni-jvm-{os}-{arch}` artifact is a transitive runtime dependency of `sdl-kmp`; `NativeLoader` extracts the bundled `libsdl_jni` from the classpath and `System.load()`s it, so no `java.library.path` setup is needed.
 - On Linux the static SDL3 is built with the X11/Wayland drivers loaded dynamically (`dlopen`), so the published klib has no link-time dependency on X11.
-- **Android**: building an `androidNative*` target requires an installed Android NDK (found under `$ANDROID_HOME/ndk`); the SDL3 static library is cross-compiled with its CMake toolchain. At runtime the app must be launched through `org.libsdl.app.SDLActivity` (or a subclass), which loads the shared library and calls its exported `SDL_main` (see the `examples/sdl_renderer/android` module).
+- **Android (native)**: building an `androidNative*` target requires an installed Android NDK (found under `$ANDROID_HOME/ndk`); the SDL3 static library is cross-compiled with its CMake toolchain. At runtime the app must be launched through `org.libsdl.app.SDLActivity` (or a subclass), which loads the shared library and calls its exported `SDL_main` (see the `examples/sdl_renderer/android` module).
+- **Android (JVM)**: depend on `sdl-kmp-android-jvm` instead of copying `SDLActivity` from the SDL `android-project` — the AAR bundles the `org.libsdl.app` classes (matching the statically linked SDL3 version) and `libsdl_jni.so` for all four NDK ABIs. Write an `Activity` extending `org.libsdl.app.SDLActivity` and return `"sdl_jni"` from `getLibraries()`; the Kotlin `cn.enaium.sdl.SDL` binding is not part of the AAR (it can be added via the `sdl-kmp` JVM artifact).
 
 ### Native linking
 
@@ -166,6 +177,7 @@ drivers).
 ./gradlew :jni-jvm-linux-x86_64:publishToMavenLocal                                                 # Linux
 ./gradlew :jni-jvm-linux-aarch64:publishToMavenLocal                                               # Linux (aarch64 host or cross)
 ./gradlew :jni-jvm-windows-x86_64:publishToMavenLocal                                               # Windows (MinGW host)
+./gradlew :android-jvm:publishToMavenLocal                                                          # Android JVM AAR (SDK + NDK)
 
 # JVM (pass SDL_VIDEO_DRIVER=dummy for headless mode)
 ./gradlew :examples:sdl_renderer:jvmRun
@@ -205,12 +217,27 @@ submodule so it matches the statically linked SDL3 version), which loads
 adb install -r examples/sdl_renderer/android/build/outputs/apk/debug/android-debug.apk
 ```
 
+## Submodule patches
+
+The `SDL` submodule stays pinned to an upstream commit; fixes live under `patches/SDL.patch` and are applied by the root `applySubmodulePatches` task before any task that configures or compiles the SDL sources (native static libs, per-OS JNI, Android JNI, wasm). The apply is idempotent (`git apply --reverse --check` skips when already applied), so both CI and local builds work from a clean checkout. To update a fix, edit the SDL working tree and regenerate the patch:
+
+```bash
+git -C SDL diff > patches/SDL.patch
+git -C SDL checkout -- .
+```
+
+Current fixes: X11 remote-injected clicks (drop the keyboard-focus requirement for slave pointer buttons) and Cocoa GCMouse/NSEvent duplicate handling (always deliver NSEvent button events; GCMouse is used for raw motion only, so synthetic clicks from remote-control / accessibility tools are no longer dropped).
+
 ## Development
 
 ```bash
 # Unit + integration tests on the host platform
 ./gradlew :sdl-kmp:jvmTest :sdl-kmp:macosArm64Test   # macOS
 ./gradlew :sdl-kmp:jvmTest :sdl-kmp:linuxX64Test     # Linux
+
+# Build the Android JVM library (requires the Android SDK + NDK)
+./gradlew :android-jvm:assembleDebug
+./gradlew :android-jvm:publishToMavenLocal
 ```
 
 Building the Linux native SDL3 library (any `linuxX64` task) requires the

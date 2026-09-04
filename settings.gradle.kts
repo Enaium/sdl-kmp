@@ -49,3 +49,10 @@ listOf(
     include(name)
     project(name).projectDir = file("jni/jvm/$classifier")
 }
+
+// Android library packaging the SDL android-project Java layer
+// (org.libsdl.app: SDLActivity, SDLSurface, ...) plus the per-ABI
+// libsdl_jni.so, so consumers get a ready-to-use SDLActivity without
+// copying any SDL Java code.
+include(":android-jvm")
+project(":android-jvm").projectDir = file("jni/android-jvm")

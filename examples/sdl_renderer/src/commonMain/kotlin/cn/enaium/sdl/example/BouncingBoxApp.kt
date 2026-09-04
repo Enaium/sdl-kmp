@@ -33,6 +33,7 @@ import cn.enaium.sdl.SDLFloatPoint
 import cn.enaium.sdl.SDLFRect
 import cn.enaium.sdl.SDLInitFlags
 import cn.enaium.sdl.SDLKeycode
+import cn.enaium.sdl.SDLMouseButton
 import cn.enaium.sdl.SDLPixelFormat
 import cn.enaium.sdl.SDLPoint
 import cn.enaium.sdl.SDLRect
@@ -47,6 +48,9 @@ import cn.enaium.sdl.SDLTexture
 import cn.enaium.sdl.SDLWindow
 import cn.enaium.sdl.SDLWindowEventType
 import cn.enaium.sdl.SDLWindowFlags
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * The bouncing-box demo as a frame state machine, shared by every platform.
@@ -81,6 +85,13 @@ class BouncingBoxDemo(
     private var frames = 0
     private var running = true
     private val start = SDL.getTicks()
+
+    // ---- click ripple circles (left/right click at cursor) ----
+    private data class ClickRipple(val x: Float, val y: Float, val color: SDLColor, val born: ULong)
+
+    private val clickRipples = mutableListOf<ClickRipple>()
+    private val clickRippleLifetimeMs = 600uL
+    private val clickRippleSegments = 32
 
     /** The number of frames rendered so far. */
     fun frameCount(): Int = frames
@@ -147,9 +158,21 @@ class BouncingBoxDemo(
                 is SDLEvent.AudioDevice -> println(
                     "audio device event: id=${event.deviceId} capture=${event.isCapture} type=0x${event.type.toString(16)}",
                 )
-                is SDLEvent.MouseButton -> println(
-                    "mouse ${if (event.down) "down" else "up"} at ${event.x.toInt()},${event.y.toInt()}",
-                )
+                is SDLEvent.MouseButton -> {
+                    println(
+                        "mouse ${if (event.down) "down" else "up"} at ${event.x.toInt()},${event.y.toInt()}",
+                    )
+                    if (event.down) {
+                        val color = when (event.button) {
+                            SDLMouseButton.LEFT -> SDLColor(255, 96, 96)
+                            SDLMouseButton.RIGHT -> SDLColor(96, 160, 255)
+                            else -> null
+                        }
+                        if (color != null) {
+                            clickRipples += ClickRipple(event.x, event.y, color, SDL.getTicks())
+                        }
+                    }
+                }
                 is SDLEvent.MouseMotion -> {
                     // Track the cursor for the mouse-following square.
                     mouseX = event.x
@@ -160,6 +183,10 @@ class BouncingBoxDemo(
         }
 
         // ---- update ----
+        // Expire click ripples after their lifetime.
+        val now = SDL.getTicks()
+        clickRipples.removeAll { now - it.born >= clickRippleLifetimeMs }
+
         if (box.update() && bounceStream != null && !paused) {
             // Bounced: queue a short blip. Clear any stale queued data
             // first so fast bounces restart the sound cleanly.
@@ -193,6 +220,35 @@ class BouncingBoxDemo(
         renderer.fillRect(mouseRect)
         renderer.drawColor = SDLColor(240, 240, 240)
         renderer.drawRect(mouseRect)
+
+        // ---- click ripples (filled circles via triangle fan) ----
+        if (clickRipples.isNotEmpty()) {
+            renderer.blendMode = SDLBlendMode.BLEND
+            for (ripple in clickRipples) {
+                val age = now - ripple.born
+                val fade = 1f - age.toFloat() / clickRippleLifetimeMs.toFloat()
+                val radius = 12f + 24f * fade
+                val alpha = (255 * fade).toInt().coerceIn(0, 255)
+                val color = ripple.color.copy(a = alpha)
+                val vertices = ArrayList<SDLVertex>(clickRippleSegments * 3)
+                val center = SDLFloatPoint(ripple.x, ripple.y)
+                for (i in 0 until clickRippleSegments) {
+                    val a0 = 2.0 * PI * i / clickRippleSegments
+                    val a1 = 2.0 * PI * (i + 1) / clickRippleSegments
+                    vertices += SDLVertex(center, color)
+                    vertices += SDLVertex(
+                        SDLFloatPoint(ripple.x + radius * cos(a0).toFloat(), ripple.y + radius * sin(a0).toFloat()),
+                        color,
+                    )
+                    vertices += SDLVertex(
+                        SDLFloatPoint(ripple.x + radius * cos(a1).toFloat(), ripple.y + radius * sin(a1).toFloat()),
+                        color,
+                    )
+                }
+                renderer.renderGeometry(texture = null, vertices = vertices)
+            }
+            renderer.blendMode = SDLBlendMode.NONE
+        }
 
         // ---- textured spinning square ----
         texture.update(null, gradientPixels(64, 64), 64 * 4)
@@ -289,6 +345,11 @@ class BouncingBoxDemo(
  * null when window or renderer creation fails.
  */
 fun createBouncingBoxDemo(maxFrames: Int): BouncingBoxDemo? {
+    // Remote-control sessions (e.g. Sunlogin) click an unfocused window to
+    // activate it; without this hint macOS/X11/Wayland swallow that first
+    // click (focus click-through) and no SDL_EVENT_MOUSE_BUTTON_* is seen.
+    SDL.setHint("SDL_MOUSE_FOCUS_CLICKTHROUGH", "1")
+
     // ---------- audio: enumerate devices ----------
     val playbackDevices = SDL.audioPlaybackDevices
     if (playbackDevices.isNotEmpty()) {

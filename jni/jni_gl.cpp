@@ -25,7 +25,36 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 
+#include <type_traits>
+
 #include "jni_bridge.h"
+
+// ===========================================================================
+// Vulkan handle marshaling
+//
+// SDL defines non-dispatchable Vulkan handles (VkSurfaceKHR) as a pointer on
+// 64-bit platforms but as a 64-bit integer on 32-bit platforms (e.g. Android
+// armeabi-v7a), so a plain reinterpret_cast between handle and jlong does not
+// compile there. These helpers bridge both representations.
+// ===========================================================================
+
+template <typename T>
+static jlong vulkanHandleToJlong(T handle) {
+    if constexpr (std::is_pointer_v<T>) {
+        return reinterpret_cast<jlong>(handle);
+    } else {
+        return static_cast<jlong>(handle);
+    }
+}
+
+template <typename T>
+static T vulkanJlongToHandle(jlong value) {
+    if constexpr (std::is_pointer_v<T>) {
+        return reinterpret_cast<T>(value);
+    } else {
+        return static_cast<T>(value);
+    }
+}
 
 // ===========================================================================
 // OpenGL
@@ -151,26 +180,26 @@ SDLJNI_FUNC(jobjectArray) SDLJNI_NAME(vulkanGetInstanceExtensions)(JNIEnv *env, 
 }
 
 SDLJNI_FUNC(jlong) SDLJNI_NAME(vulkanCreateSurface)(JNIEnv *, jclass, jlong window, jlong instance) {
-    VkSurfaceKHR surface = nullptr;
+    VkSurfaceKHR surface = 0;
     if (SDL_Vulkan_CreateSurface(reinterpret_cast<SDL_Window *>(window),
-                                 reinterpret_cast<VkInstance>(instance), nullptr, &surface)) {
-        return reinterpret_cast<jlong>(surface);
+                                 vulkanJlongToHandle<VkInstance>(instance), nullptr, &surface)) {
+        return vulkanHandleToJlong(surface);
     }
     return 0;
 }
 
 SDLJNI_FUNC(void) SDLJNI_NAME(vulkanDestroySurface)(JNIEnv *, jclass, jlong instance, jlong surface) {
     if (surface != 0) {
-        SDL_Vulkan_DestroySurface(reinterpret_cast<VkInstance>(instance),
-                                  reinterpret_cast<VkSurfaceKHR>(surface), nullptr);
+        SDL_Vulkan_DestroySurface(vulkanJlongToHandle<VkInstance>(instance),
+                                  vulkanJlongToHandle<VkSurfaceKHR>(surface), nullptr);
     }
 }
 
 SDLJNI_FUNC(jboolean) SDLJNI_NAME(vulkanGetPresentationSupport)(JNIEnv *, jclass, jlong instance,
                                                                 jlong physicalDevice,
                                                                 jint queueFamilyIndex) {
-    return SDL_Vulkan_GetPresentationSupport(reinterpret_cast<VkInstance>(instance),
-                                             reinterpret_cast<VkPhysicalDevice>(physicalDevice),
+    return SDL_Vulkan_GetPresentationSupport(vulkanJlongToHandle<VkInstance>(instance),
+                                             vulkanJlongToHandle<VkPhysicalDevice>(physicalDevice),
                                              static_cast<Uint32>(queueFamilyIndex))
                ? JNI_TRUE
                : JNI_FALSE;

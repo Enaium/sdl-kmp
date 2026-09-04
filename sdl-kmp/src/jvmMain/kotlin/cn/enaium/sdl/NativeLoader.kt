@@ -39,6 +39,31 @@ internal object NativeLoader {
     private const val RESOURCE_BASE = "/cn/enaium/sdl/native"
 
     fun load() {
+        // Try the bundled per-OS/arch resource first (desktop artifacts).
+        val resourceError = try {
+            loadFromResources()
+            null
+        } catch (e: UnsatisfiedLinkError) {
+            e
+        }
+        if (resourceError == null) {
+            return
+        }
+
+        // No bundled resource matched (e.g. on Android, where libsdl_jni.so is
+        // packaged in the APK's jniLibs by sdl-kmp-android-jvm, or a developer
+        // workflow with -Djava.library.path): fall back to the platform loader.
+        try {
+            System.loadLibrary(LIB_NAME)
+        } catch (e: UnsatisfiedLinkError) {
+            throw UnsatisfiedLinkError(
+                "Unable to load $LIB_NAME: ${resourceError.message} " +
+                    "and System.loadLibrary(\"$LIB_NAME\") failed: ${e.message}",
+            )
+        }
+    }
+
+    private fun loadFromResources() {
         val classifier = detectClassifier()
         // Windows DLLs don't use the "lib" prefix (sdl_jni.dll), while Unix
         // shared libraries do (libsdl_jni.so/.dylib).

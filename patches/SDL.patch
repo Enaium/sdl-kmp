@@ -1,0 +1,78 @@
+diff --git a/src/video/cocoa/SDL_cocoamouse.m b/src/video/cocoa/SDL_cocoamouse.m
+index 2b476e595..38a816793 100644
+--- a/src/video/cocoa/SDL_cocoamouse.m
++++ b/src/video/cocoa/SDL_cocoamouse.m
+@@ -355,29 +355,11 @@ static void Cocoa_OnGCMouseConnected(GCMouse *mouse)
+         SDL_SetAtomicInt(&cocoa_gcmouse_relative_mode, 1);
+     }
+ 
+-    mouse.mouseInput.leftButton.pressedChangedHandler =
+-        ^(GCControllerButtonInput *button, float value, BOOL pressed) {
+-            Cocoa_OnGCMouseButtonChanged(mouseID, SDL_BUTTON_LEFT, pressed);
+-        };
+-    mouse.mouseInput.middleButton.pressedChangedHandler =
+-        ^(GCControllerButtonInput *button, float value, BOOL pressed) {
+-            Cocoa_OnGCMouseButtonChanged(mouseID, SDL_BUTTON_MIDDLE, pressed);
+-        };
+-    mouse.mouseInput.rightButton.pressedChangedHandler =
+-        ^(GCControllerButtonInput *button, float value, BOOL pressed) {
+-            Cocoa_OnGCMouseButtonChanged(mouseID, SDL_BUTTON_RIGHT, pressed);
+-        };
+-
+-    int auxiliary_button = SDL_BUTTON_X1;
+-    for (GCControllerButtonInput *btn in mouse.mouseInput.auxiliaryButtons) {
+-        const int current_button = auxiliary_button;
+-        btn.pressedChangedHandler =
+-            ^(GCControllerButtonInput *button, float value, BOOL pressed) {
+-                Cocoa_OnGCMouseButtonChanged(mouseID, current_button, pressed);
+-            };
+-        ++auxiliary_button;
+-    }
+-
++    /* GCMouse is used for raw motion only. Button events are deliberately
++     * left to the NSEvent path in SDL_cocoawindow.m: wiring the GCMouse button
++     * callbacks here would require skipping NSEvent buttons when a GCMouse is
++     * present, which also silently drops synthetic clicks from remote-control
++     * and accessibility tools (they never reach GCMouse). */
+     mouse.mouseInput.mouseMovedHandler =
+         ^(GCMouseInput *mouseInput, float deltaX, float deltaY) {
+             if (Cocoa_GCMouseRelativeMode()) {
+diff --git a/src/video/cocoa/SDL_cocoawindow.m b/src/video/cocoa/SDL_cocoawindow.m
+index c50f6645b..bd9b54eee 100644
+--- a/src/video/cocoa/SDL_cocoawindow.m
++++ b/src/video/cocoa/SDL_cocoawindow.m
+@@ -1725,10 +1725,11 @@ - (BOOL)processHitTest:(NSEvent *)theEvent
+ 
+ static void Cocoa_SendMouseButtonClicks(SDL_Mouse *mouse, NSEvent *theEvent, SDL_Window *window, Uint8 button, bool down)
+ {
+-    // GCMouse handles button events directly, skip NSEvent path to avoid duplicates
+-    if (Cocoa_HasGCMouse()) {
+-        return;
+-    }
++    // NSEvent button events are always delivered here. GCMouse no longer sends
++    // its own button events (see SDL_cocoamouse.m), so there is nothing to
++    // deduplicate against, and skipping this path would drop synthetic clicks
++    // from remote-control / accessibility tools, which never go through
++    // GCMouse at all.
+ 
+     SDL_MouseID mouseID = SDL_DEFAULT_MOUSE_ID;
+     //const int clicks = (int)[theEvent clickCount];
+diff --git a/src/video/x11/SDL_x11xinput2.c b/src/video/x11/SDL_x11xinput2.c
+index 7c7cefd12..552b4f957 100644
+--- a/src/video/x11/SDL_x11xinput2.c
++++ b/src/video/x11/SDL_x11xinput2.c
+@@ -626,10 +626,12 @@ void X11_HandleXinput2Event(SDL_VideoDevice *_this, XGenericEventCookie *cookie)
+             int x_ticks = 0, y_ticks = 0;
+ 
+             if (xev->deviceid != videodata->xinput_master_pointer_device) {
+-                /* Ignore slave button events on non-focused windows, as they can arrive before FocusIn events,
++                /* Ignore slave button events on windows that don't have mouse focus, as they can arrive before FocusIn events,
+                  * or result in focus being incorrectly set while a grab is active.
++                 * Keyboard focus is not required here: remote control tools inject clicks via virtual slave devices
++                 * (XTEST/uinput) while the window may not have keyboard focus, and requiring it drops those clicks.
+                  */
+-                if (SDL_GetMouseFocus() != windowdata->window || SDL_GetKeyboardFocus() != windowdata->window) {
++                if (SDL_GetMouseFocus() != windowdata->window) {
+                     break;
+                 }
+ 
