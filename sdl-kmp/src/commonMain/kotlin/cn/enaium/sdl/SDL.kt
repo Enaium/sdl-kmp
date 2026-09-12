@@ -272,6 +272,7 @@ object SDLFlipMode {
     const val NONE = 0
     const val HORIZONTAL = 1
     const val VERTICAL = 2
+    const val HORIZONTAL_AND_VERTICAL = 3
 }
 
 /** Logical presentation modes (values match SDL3's SDL_RendererLogicalPresentation). */

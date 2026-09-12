@@ -75,6 +75,21 @@ internal class JvmSDLGPUGraphicsPipeline internal constructor(ptr: Long, private
     }
 }
 
+internal class JvmSDLGPUComputePipeline internal constructor(ptr: Long, private val device: JvmSDLGPUDevice) : SDLGPUComputePipeline {
+
+    private var ptrValue: Long = ptr
+
+    override val ptr: Long
+        get() = ptrValue
+
+    override fun close() {
+        val pipeline = ptrValue
+        if (pipeline == 0L) return
+        ptrValue = 0L
+        Jni.gpuReleaseComputePipeline(device.check(), pipeline)
+    }
+}
+
 internal class JvmSDLGPUTexture internal constructor(
     ptr: Long,
     private val device: JvmSDLGPUDevice,
@@ -216,6 +231,16 @@ internal class JvmSDLGPURenderPass internal constructor(ptr: Long) : SDLGPURende
         Jni.gpuBindFragmentSamplers(check(), slot, textures, samplers)
     }
 
+    override fun bindGraphicsStorageTextures(slot: Int, vararg textures: SDLGPUTexture) {
+        if (textures.isEmpty()) return
+        Jni.gpuBindFragmentStorageTextures(check(), slot, LongArray(textures.size) { i -> textures[i].ptr })
+    }
+
+    override fun bindGraphicsStorageBuffers(slot: Int, vararg buffers: SDLGPUBuffer) {
+        if (buffers.isEmpty()) return
+        Jni.gpuBindFragmentStorageBuffers(check(), slot, LongArray(buffers.size) { i -> buffers[i].ptr })
+    }
+
     override fun pushVertexUniformData(slot: Int, data: ByteArray) {
         Jni.gpuPushVertexUniformData(check(), slot, data)
     }
@@ -238,6 +263,61 @@ internal class JvmSDLGPURenderPass internal constructor(ptr: Long) : SDLGPURende
     override fun close() = end()
 }
 
+internal class JvmSDLGPUComputePass internal constructor(
+    ptr: Long,
+    private val commandBuffer: JvmSDLGPUCommandBuffer,
+) : SDLGPUComputePass {
+
+    private var ptrValue: Long = ptr
+
+    override val ptr: Long
+        get() = ptrValue
+
+    private fun check(): Long = ptrValue.also {
+        if (it == 0L) throw IllegalStateException("SDL GPU compute pass is closed")
+    }
+
+    override fun bindComputePipeline(pipeline: SDLGPUComputePipeline) {
+        val p = (pipeline as? JvmSDLGPUComputePipeline)?.ptr
+            ?: throw IllegalArgumentException("pipeline is not a JVM SDL GPU compute pipeline")
+        Jni.gpuBindComputePipeline(check(), p)
+    }
+
+    override fun bindComputeSamplers(slot: Int, vararg bindings: Pair<SDLGPUTexture, SDLGPUSampler>) {
+        if (bindings.isEmpty()) return
+        val textures = LongArray(bindings.size) { i -> bindings[i].first.ptr }
+        val samplers = LongArray(bindings.size) { i -> bindings[i].second.ptr }
+        Jni.gpuBindComputeSamplers(check(), slot, textures, samplers)
+    }
+
+    override fun bindComputeStorageTextures(slot: Int, vararg textures: SDLGPUTexture) {
+        if (textures.isEmpty()) return
+        Jni.gpuBindComputeStorageTextures(check(), slot, LongArray(textures.size) { i -> textures[i].ptr })
+    }
+
+    override fun bindComputeStorageBuffers(slot: Int, vararg buffers: SDLGPUBuffer) {
+        if (buffers.isEmpty()) return
+        Jni.gpuBindComputeStorageBuffers(check(), slot, LongArray(buffers.size) { i -> buffers[i].ptr })
+    }
+
+    override fun pushUniformData(slot: Int, data: ByteArray) {
+        Jni.gpuPushComputeUniformData(commandBuffer.check(), slot, data)
+    }
+
+    override fun dispatch(groupCountX: Int, groupCountY: Int, groupCountZ: Int) {
+        Jni.gpuDispatchCompute(check(), groupCountX, groupCountY, groupCountZ)
+    }
+
+    override fun end() {
+        val pass = ptrValue
+        if (pass == 0L) return
+        ptrValue = 0L
+        Jni.gpuEndComputePass(pass)
+    }
+
+    override fun close() = end()
+}
+
 internal class JvmSDLGPUCommandBuffer internal constructor(ptr: Long, private val device: JvmSDLGPUDevice) : SDLGPUCommandBuffer {
 
     internal var ptrValue: Long = ptr
@@ -250,10 +330,7 @@ internal class JvmSDLGPUCommandBuffer internal constructor(ptr: Long, private va
 
     override fun beginRenderPass(colorTargets: List<SDLGPUColorTargetInfo>): SDLGPURenderPass? {
         if (colorTargets.isEmpty()) return null
-        val textures = LongArray(colorTargets.size) { i ->
-            (colorTargets[i].texture as? JvmSDLGPUTexture)?.ptr
-                ?: throw IllegalArgumentException("color target texture is not a JVM SDL GPU texture")
-        }
+        val textures = LongArray(colorTargets.size) { i -> colorTargets[i].texture.ptr }
         val mipLevels = IntArray(colorTargets.size) { colorTargets[it].mipLevel }
         val layers = IntArray(colorTargets.size) { colorTargets[it].layerOrDepthPlane }
         val loadOps = IntArray(colorTargets.size) { colorTargets[it].loadOp }
@@ -282,10 +359,64 @@ internal class JvmSDLGPUCommandBuffer internal constructor(ptr: Long, private va
     }
 
     override fun uploadToBuffer(buffer: SDLGPUBuffer, data: ByteArray, offset: Int): Boolean {
-        val b = (buffer as? JvmSDLGPUBuffer)?.ptr
-            ?: throw IllegalArgumentException("buffer is not a JVM SDL GPU buffer")
+        val b = buffer.ptr
         if (offset + data.size > buffer.size) return false
         return Jni.gpuUploadToBufferInCmd(device.check(), check(), b, data, offset)
+    }
+
+    override fun beginComputePass(
+        storageTextures: List<SDLGPUStorageTextureBinding>,
+        storageBuffers: List<SDLGPUStorageBufferBinding>,
+    ): SDLGPUComputePass? {
+        val tex = LongArray(storageTextures.size) { i -> storageTextures[i].texture.ptr }
+        val mips = IntArray(storageTextures.size) { storageTextures[it].mipLevel }
+        val layers = IntArray(storageTextures.size) { storageTextures[it].layer }
+        val texCycles = BooleanArray(storageTextures.size) { storageTextures[it].cycle }
+        val buf = LongArray(storageBuffers.size) { i -> storageBuffers[i].buffer.ptr }
+        val bufCycles = BooleanArray(storageBuffers.size) { storageBuffers[it].cycle }
+        val pass = Jni.gpuBeginComputePass(
+            check(),
+            tex.takeIf { it.isNotEmpty() }, mips.takeIf { it.isNotEmpty() }, layers.takeIf { it.isNotEmpty() }, texCycles.takeIf { it.isNotEmpty() },
+            buf.takeIf { it.isNotEmpty() }, bufCycles.takeIf { it.isNotEmpty() },
+        )
+        if (pass == 0L) return null
+        return JvmSDLGPUComputePass(pass, this)
+    }
+
+    override fun blit(info: SDLGPUBlitInfo): Boolean {
+        val src = info.source.texture
+        val dst = info.destination.texture
+        val c = info.clearColor
+        return Jni.gpuBlit(
+            check(),
+            src.ptr, info.source.mipLevel, info.source.layerOrDepthPlane, info.source.x, info.source.y, info.source.width, info.source.height,
+            dst.ptr, info.destination.mipLevel, info.destination.layerOrDepthPlane, info.destination.x, info.destination.y, info.destination.width, info.destination.height,
+            info.loadOp, c.r / 255f, c.g / 255f, c.b / 255f, c.a / 255f,
+            info.flipMode, info.filter, info.cycle,
+        )
+    }
+
+    override fun copyTextureToTexture(
+        source: SDLGPUTexture,
+        destination: SDLGPUTexture,
+        width: Int,
+        height: Int,
+        depth: Int,
+        sourceX: Int,
+        sourceY: Int,
+        sourceZ: Int,
+        destinationX: Int,
+        destinationY: Int,
+        destinationZ: Int,
+    ): Boolean {
+        val src = source
+        val dst = destination
+        return Jni.gpuCopyTextureToTexture(
+            check(),
+            src.ptr, 0, 0, sourceX, sourceY, sourceZ,
+            dst.ptr, 0, 0, destinationX, destinationY, destinationZ,
+            width, height, depth,
+        )
     }
 
     override fun end() {
@@ -480,6 +611,31 @@ internal class JvmSDLGPUDevice internal constructor(ptr: Long) : SDLGPUDevice {
         )
         if (sampler == 0L) return null
         return JvmSDLGPUSampler(sampler, this@JvmSDLGPUDevice)
+    }
+
+    override fun createComputePipeline(createInfo: SDLGPUComputePipelineCreateInfo): SDLGPUComputePipeline? {
+        val pipeline = Jni.gpuCreateComputePipeline(
+            check(),
+            createInfo.code,
+            createInfo.format,
+            createInfo.entryPoint,
+            createInfo.numSamplers,
+            createInfo.numReadonlyStorageTextures,
+            createInfo.numReadonlyStorageBuffers,
+            createInfo.numReadwriteStorageTextures,
+            createInfo.numReadwriteStorageBuffers,
+            createInfo.numUniformBuffers,
+            createInfo.threadcountX,
+            createInfo.threadcountY,
+            createInfo.threadcountZ,
+        )
+        if (pipeline == 0L) return null
+        return JvmSDLGPUComputePipeline(pipeline, this@JvmSDLGPUDevice)
+    }
+
+    override fun adoptTexture(rawPtr: Long, bytesPerPixel: Int): SDLGPUTexture {
+        if (rawPtr == 0L) throw IllegalArgumentException("cannot adopt a null texture")
+        return JvmSDLGPUTexture(rawPtr, this@JvmSDLGPUDevice, bytesPerPixel)
     }
 
     override fun beginCommandBuffer(): SDLGPUCommandBuffer? {

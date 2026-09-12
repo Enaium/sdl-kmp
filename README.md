@@ -37,7 +37,7 @@ Not supported: watchOS (SDL3 has no watchOS support) and visionOS (Kotlin/Native
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("cn.enaium.sdl:sdl-kmp:1.0.10")
+            implementation("cn.enaium.sdl:sdl-kmp:1.0.12")
         }
     }
 }
@@ -82,6 +82,70 @@ fun main() {
     SDL.quit()
 }
 ```
+
+### GPU
+
+The SDL3 GPU API is bound in `cn.enaium.sdl.SDLGPU` (see `SDLGPU.kt`). A device
+owns every other GPU object; each object releases itself with `close()`:
+
+```kotlin
+SDLGPU.createDevice().use { device ->
+    SDL.createWindow("gpu", 800, 600).use { window ->
+        device.claimWindow(window)
+
+        val texture = device.createTexture(
+            SDLGPUTextureCreateInfo(
+                format = SDLGPUTextureFormat.R8G8B8A8_UNORM,
+                usage = SDLGPUTextureUsage.SAMPLE,
+                width = 256,
+                height = 256,
+            ),
+        ) ?: error(SDL.error())
+        texture.upload(rgbaBytes, bytesPerRow = 256 * 4, x = 0, y = 0, width = 256, height = 256)
+
+        device.beginCommandBuffer()?.use { commandBuffer ->
+            val swapchain = device.acquireSwapchainTexture(commandBuffer, window) ?: return@use
+            val target = swapchain.texture ?: return@use
+            commandBuffer.blit(
+                SDLGPUBlitInfo(
+                    source = SDLGPUBlitRegion(texture = texture, width = 256, height = 256),
+                    destination = SDLGPUBlitRegion(
+                        texture = target,
+                        width = swapchain.srcRect.width,
+                        height = swapchain.srcRect.height,
+                    ),
+                ),
+            )
+            device.submit(commandBuffer)
+        }
+
+        device.releaseDrawable(window)
+    }
+}
+```
+
+- **Command buffers** — `beginCommandBuffer()` / `submit()` /
+  `submitAndAcquireFence()`. A buffer must be submitted or cancelled; `close()`
+  cancels when it was neither.
+- **Passes** — `beginRenderPass(colorTargets)` returns an `SDLGPURenderPass`
+  (pipelines, vertex/index buffers, samplers, storage textures/buffers,
+  uniforms, draws); `beginComputePass(storageTextures, storageBuffers)` returns
+  an `SDLGPUComputePass` (pipelines, samplers, storage, uniforms, dispatch).
+- **Blit and copy** — `blit(SDLGPUBlitInfo)` scales a source region onto a
+  destination region in one call (`SDL_BlitGPUTexture`, no pipeline needed);
+  `copyTextureToTexture(...)` copies between textures.
+- **Textures** — `upload` writes CPU pixels into a subrectangle (bytes-per-row
+  is converted to SDL3's pixel-based `pixels_per_row` using the format's texel
+  size); `download` reads a region back as RGBA8 (blocking on a fence).
+  `adoptTexture(rawPtr, bytesPerPixel)` wraps a texture created by another
+  library (e.g. `SDL_image`'s `IMG_LoadGPUTexture`) so it gets the same
+  upload/download/close behaviour.
+- **Pipelines** — `createGraphicsPipeline(SDLGPUGraphicsPipelineCreateInfo)`
+  and `createComputePipeline(SDLGPUComputePipelineCreateInfo)`, with shader
+  bytecode from `createShader(code, format, stage, entryPoint, ...)`. The
+  shader format (see `SDLGPUShaderFormat`) must match the device
+  (`device.shaderFormats`): MSL on Metal, SPIR-V on Vulkan, DXIL/DXBC on
+  D3D12.
 
 ### Platform notes
 

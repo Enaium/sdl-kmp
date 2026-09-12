@@ -219,6 +219,67 @@ SDLJNI_FUNC(void) SDLJNI_NAME(gpuBindFragmentSamplers)(JNIEnv *env, jclass, jlon
                                 bindings.data(), static_cast<Uint32>(count));
 }
 
+// Binds storage textures to the vertex/fragment stage (GRAPHICS_STORAGE_READ).
+SDLJNI_FUNC(void) SDLJNI_NAME(gpuBindVertexStorageTextures)(JNIEnv *env, jclass, jlong renderPass,
+                                                            jint slot, jlongArray textures) {
+    jsize count = env->GetArrayLength(textures);
+    if (count <= 0) return;
+    std::vector<jlong> texturesV;
+    sdl_kmp_jni_read_long_array(env, textures, texturesV);
+    std::vector<SDL_GPUTexture *> ptrs(static_cast<size_t>(count));
+    for (jsize i = 0; i < count; i++) {
+        ptrs[static_cast<size_t>(i)] = reinterpret_cast<SDL_GPUTexture *>(texturesV[static_cast<size_t>(i)]);
+    }
+    SDL_BindGPUVertexStorageTextures(reinterpret_cast<SDL_GPURenderPass *>(renderPass),
+                                     static_cast<Uint32>(slot), ptrs.data(),
+                                     static_cast<Uint32>(count));
+}
+
+SDLJNI_FUNC(void) SDLJNI_NAME(gpuBindVertexStorageBuffers)(JNIEnv *env, jclass, jlong renderPass,
+                                                           jint slot, jlongArray buffers) {
+    jsize count = env->GetArrayLength(buffers);
+    if (count <= 0) return;
+    std::vector<jlong> buffersV;
+    sdl_kmp_jni_read_long_array(env, buffers, buffersV);
+    std::vector<SDL_GPUBuffer *> ptrs(static_cast<size_t>(count));
+    for (jsize i = 0; i < count; i++) {
+        ptrs[static_cast<size_t>(i)] = reinterpret_cast<SDL_GPUBuffer *>(buffersV[static_cast<size_t>(i)]);
+    }
+    SDL_BindGPUVertexStorageBuffers(reinterpret_cast<SDL_GPURenderPass *>(renderPass),
+                                    static_cast<Uint32>(slot), ptrs.data(),
+                                    static_cast<Uint32>(count));
+}
+
+SDLJNI_FUNC(void) SDLJNI_NAME(gpuBindFragmentStorageTextures)(JNIEnv *env, jclass, jlong renderPass,
+                                                              jint slot, jlongArray textures) {
+    jsize count = env->GetArrayLength(textures);
+    if (count <= 0) return;
+    std::vector<jlong> texturesV;
+    sdl_kmp_jni_read_long_array(env, textures, texturesV);
+    std::vector<SDL_GPUTexture *> ptrs(static_cast<size_t>(count));
+    for (jsize i = 0; i < count; i++) {
+        ptrs[static_cast<size_t>(i)] = reinterpret_cast<SDL_GPUTexture *>(texturesV[static_cast<size_t>(i)]);
+    }
+    SDL_BindGPUFragmentStorageTextures(reinterpret_cast<SDL_GPURenderPass *>(renderPass),
+                                       static_cast<Uint32>(slot), ptrs.data(),
+                                       static_cast<Uint32>(count));
+}
+
+SDLJNI_FUNC(void) SDLJNI_NAME(gpuBindFragmentStorageBuffers)(JNIEnv *env, jclass, jlong renderPass,
+                                                             jint slot, jlongArray buffers) {
+    jsize count = env->GetArrayLength(buffers);
+    if (count <= 0) return;
+    std::vector<jlong> buffersV;
+    sdl_kmp_jni_read_long_array(env, buffers, buffersV);
+    std::vector<SDL_GPUBuffer *> ptrs(static_cast<size_t>(count));
+    for (jsize i = 0; i < count; i++) {
+        ptrs[static_cast<size_t>(i)] = reinterpret_cast<SDL_GPUBuffer *>(buffersV[static_cast<size_t>(i)]);
+    }
+    SDL_BindGPUFragmentStorageBuffers(reinterpret_cast<SDL_GPURenderPass *>(renderPass),
+                                      static_cast<Uint32>(slot), ptrs.data(),
+                                      static_cast<Uint32>(count));
+}
+
 SDLJNI_FUNC(void) SDLJNI_NAME(gpuPushVertexUniformData)(JNIEnv *env, jclass, jlong commandBuffer,
                                                         jint slot, jbyteArray data) {
     jsize len = env->GetArrayLength(data);
@@ -255,6 +316,200 @@ SDLJNI_FUNC(void) SDLJNI_NAME(gpuDrawIndexedPrimitives)(JNIEnv *, jclass, jlong 
                                  static_cast<Uint32>(indexCount), static_cast<Uint32>(instanceCount),
                                  static_cast<Uint32>(firstIndex), static_cast<Sint32>(vertexOffset),
                                  static_cast<Uint32>(firstInstance));
+}
+
+// Blits a source texture region into a destination region (scaling allowed).
+// Must be called outside any pass on the command buffer.
+SDLJNI_FUNC(jboolean) SDLJNI_NAME(gpuBlit)(
+    JNIEnv *, jclass, jlong commandBuffer,
+    jlong srcTexture, jint srcMip, jint srcLayer, jint srcX, jint srcY, jint srcW, jint srcH,
+    jlong dstTexture, jint dstMip, jint dstLayer, jint dstX, jint dstY, jint dstW, jint dstH,
+    jint loadOp, jfloat clearR, jfloat clearG, jfloat clearB, jfloat clearA,
+    jint flipMode, jint filter, jboolean cycle) {
+    SDL_GPUBlitInfo info{};
+    info.source.texture = reinterpret_cast<SDL_GPUTexture *>(srcTexture);
+    info.source.mip_level = static_cast<Uint32>(srcMip);
+    info.source.layer_or_depth_plane = static_cast<Uint32>(srcLayer);
+    info.source.x = static_cast<Uint32>(srcX);
+    info.source.y = static_cast<Uint32>(srcY);
+    info.source.w = static_cast<Uint32>(srcW);
+    info.source.h = static_cast<Uint32>(srcH);
+    info.destination.texture = reinterpret_cast<SDL_GPUTexture *>(dstTexture);
+    info.destination.mip_level = static_cast<Uint32>(dstMip);
+    info.destination.layer_or_depth_plane = static_cast<Uint32>(dstLayer);
+    info.destination.x = static_cast<Uint32>(dstX);
+    info.destination.y = static_cast<Uint32>(dstY);
+    info.destination.w = static_cast<Uint32>(dstW);
+    info.destination.h = static_cast<Uint32>(dstH);
+    info.load_op = static_cast<SDL_GPULoadOp>(loadOp);
+    info.clear_color.r = clearR;
+    info.clear_color.g = clearG;
+    info.clear_color.b = clearB;
+    info.clear_color.a = clearA;
+    info.flip_mode = static_cast<SDL_FlipMode>(flipMode);
+    info.filter = static_cast<SDL_GPUFilter>(filter);
+    info.cycle = cycle == JNI_TRUE;
+    SDL_BlitGPUTexture(reinterpret_cast<SDL_GPUCommandBuffer *>(commandBuffer), &info);
+    return JNI_TRUE;
+}
+
+// Copies a texture subregion into another texture with a copy pass inside
+// the given command buffer (not submitted; caller submits it later).
+SDLJNI_FUNC(jboolean) SDLJNI_NAME(gpuCopyTextureToTexture)(
+    JNIEnv *, jclass, jlong commandBuffer,
+    jlong srcTexture, jint srcMip, jint srcLayer, jint srcX, jint srcY, jint srcZ,
+    jlong dstTexture, jint dstMip, jint dstLayer, jint dstX, jint dstY, jint dstZ,
+    jint w, jint h, jint d) {
+    SDL_GPUCommandBuffer *cmd = reinterpret_cast<SDL_GPUCommandBuffer *>(commandBuffer);
+    SDL_GPUCopyPass *pass = SDL_BeginGPUCopyPass(cmd);
+    if (pass == nullptr) return JNI_FALSE;
+    SDL_GPUTextureLocation src{};
+    src.texture = reinterpret_cast<SDL_GPUTexture *>(srcTexture);
+    src.mip_level = static_cast<Uint32>(srcMip);
+    src.layer = static_cast<Uint32>(srcLayer);
+    src.x = static_cast<Uint32>(srcX);
+    src.y = static_cast<Uint32>(srcY);
+    src.z = static_cast<Uint32>(srcZ);
+    SDL_GPUTextureLocation dst{};
+    dst.texture = reinterpret_cast<SDL_GPUTexture *>(dstTexture);
+    dst.mip_level = static_cast<Uint32>(dstMip);
+    dst.layer = static_cast<Uint32>(dstLayer);
+    dst.x = static_cast<Uint32>(dstX);
+    dst.y = static_cast<Uint32>(dstY);
+    dst.z = static_cast<Uint32>(dstZ);
+    SDL_CopyGPUTextureToTexture(pass, &src, &dst, static_cast<Uint32>(w),
+                                static_cast<Uint32>(h), static_cast<Uint32>(d), false);
+    SDL_EndGPUCopyPass(pass);
+    return JNI_TRUE;
+}
+
+// Begins a compute pass. storageTextures/storageBuffers: parallel arrays of
+// {texture, mip, layer, cycle} / {buffer, cycle} per binding.
+SDLJNI_FUNC(jlong) SDLJNI_NAME(gpuBeginComputePass)(
+    JNIEnv *env, jclass, jlong commandBuffer,
+    jlongArray storageTextures, jintArray storageTextureMips, jintArray storageTextureLayers,
+    jbooleanArray storageTextureCycles, jlongArray storageBuffers, jbooleanArray storageBufferCycles) {
+    std::vector<jlong> texV;
+    std::vector<jint> mipV;
+    std::vector<jint> layerV;
+    std::vector<jboolean> texCycleV;
+    std::vector<jlong> bufV;
+    std::vector<jboolean> bufCycleV;
+    if (storageTextures != nullptr) {
+        sdl_kmp_jni_read_long_array(env, storageTextures, texV);
+        sdl_kmp_jni_read_int_array(env, storageTextureMips, mipV);
+        sdl_kmp_jni_read_int_array(env, storageTextureLayers, layerV);
+        jsize n = env->GetArrayLength(storageTextureCycles);
+        texCycleV.resize(static_cast<size_t>(n));
+        env->GetBooleanArrayRegion(storageTextureCycles, 0, n, texCycleV.data());
+    }
+    if (storageBuffers != nullptr) {
+        sdl_kmp_jni_read_long_array(env, storageBuffers, bufV);
+        jsize n = env->GetArrayLength(storageBufferCycles);
+        bufCycleV.resize(static_cast<size_t>(n));
+        env->GetBooleanArrayRegion(storageBufferCycles, 0, n, bufCycleV.data());
+    }
+
+    std::vector<SDL_GPUStorageTextureReadWriteBinding> texBindings(texV.size());
+    for (size_t i = 0; i < texV.size(); i++) {
+        texBindings[i].texture = reinterpret_cast<SDL_GPUTexture *>(texV[i]);
+        texBindings[i].mip_level = static_cast<Uint32>(mipV[static_cast<size_t>(i)]);
+        texBindings[i].layer = static_cast<Uint32>(layerV[static_cast<size_t>(i)]);
+        texBindings[i].cycle = texCycleV[static_cast<size_t>(i)] == JNI_TRUE;
+    }
+    std::vector<SDL_GPUStorageBufferReadWriteBinding> bufBindings(bufV.size());
+    for (size_t i = 0; i < bufV.size(); i++) {
+        bufBindings[i].buffer = reinterpret_cast<SDL_GPUBuffer *>(bufV[i]);
+        bufBindings[i].cycle = bufCycleV[static_cast<size_t>(i)] == JNI_TRUE;
+    }
+
+    return reinterpret_cast<jlong>(SDL_BeginGPUComputePass(
+        reinterpret_cast<SDL_GPUCommandBuffer *>(commandBuffer),
+        texBindings.empty() ? nullptr : texBindings.data(),
+        static_cast<Uint32>(texBindings.size()),
+        bufBindings.empty() ? nullptr : bufBindings.data(),
+        static_cast<Uint32>(bufBindings.size())));
+}
+
+SDLJNI_FUNC(void) SDLJNI_NAME(gpuEndComputePass)(JNIEnv *, jclass, jlong computePass) {
+    SDL_EndGPUComputePass(reinterpret_cast<SDL_GPUComputePass *>(computePass));
+}
+
+SDLJNI_FUNC(void) SDLJNI_NAME(gpuBindComputePipeline)(JNIEnv *, jclass, jlong computePass,
+                                                      jlong pipeline) {
+    SDL_BindGPUComputePipeline(reinterpret_cast<SDL_GPUComputePass *>(computePass),
+                               reinterpret_cast<SDL_GPUComputePipeline *>(pipeline));
+}
+
+SDLJNI_FUNC(void) SDLJNI_NAME(gpuBindComputeSamplers)(JNIEnv *env, jclass, jlong computePass,
+                                                      jint slot, jlongArray textures,
+                                                      jlongArray samplers) {
+    jsize count = env->GetArrayLength(textures);
+    if (count <= 0) return;
+    std::vector<jlong> texturesV;
+    std::vector<jlong> samplersV;
+    sdl_kmp_jni_read_long_array(env, textures, texturesV);
+    sdl_kmp_jni_read_long_array(env, samplers, samplersV);
+    std::vector<SDL_GPUTextureSamplerBinding> bindings(static_cast<size_t>(count));
+    for (jsize i = 0; i < count; i++) {
+        bindings[static_cast<size_t>(i)].texture =
+            reinterpret_cast<SDL_GPUTexture *>(texturesV[static_cast<size_t>(i)]);
+        bindings[static_cast<size_t>(i)].sampler =
+            reinterpret_cast<SDL_GPUSampler *>(samplersV[static_cast<size_t>(i)]);
+    }
+    SDL_BindGPUComputeSamplers(reinterpret_cast<SDL_GPUComputePass *>(computePass),
+                               static_cast<Uint32>(slot), bindings.data(),
+                               static_cast<Uint32>(count));
+}
+
+SDLJNI_FUNC(void) SDLJNI_NAME(gpuBindComputeStorageTextures)(JNIEnv *env, jclass, jlong computePass,
+                                                             jint slot, jlongArray textures) {
+    jsize count = env->GetArrayLength(textures);
+    if (count <= 0) return;
+    std::vector<jlong> texturesV;
+    sdl_kmp_jni_read_long_array(env, textures, texturesV);
+    std::vector<SDL_GPUTexture *> ptrs(static_cast<size_t>(count));
+    for (jsize i = 0; i < count; i++) {
+        ptrs[static_cast<size_t>(i)] = reinterpret_cast<SDL_GPUTexture *>(texturesV[static_cast<size_t>(i)]);
+    }
+    SDL_BindGPUComputeStorageTextures(reinterpret_cast<SDL_GPUComputePass *>(computePass),
+                                      static_cast<Uint32>(slot), ptrs.data(),
+                                      static_cast<Uint32>(count));
+}
+
+SDLJNI_FUNC(void) SDLJNI_NAME(gpuBindComputeStorageBuffers)(JNIEnv *env, jclass, jlong computePass,
+                                                            jint slot, jlongArray buffers) {
+    jsize count = env->GetArrayLength(buffers);
+    if (count <= 0) return;
+    std::vector<jlong> buffersV;
+    sdl_kmp_jni_read_long_array(env, buffers, buffersV);
+    std::vector<SDL_GPUBuffer *> ptrs(static_cast<size_t>(count));
+    for (jsize i = 0; i < count; i++) {
+        ptrs[static_cast<size_t>(i)] = reinterpret_cast<SDL_GPUBuffer *>(buffersV[static_cast<size_t>(i)]);
+    }
+    SDL_BindGPUComputeStorageBuffers(reinterpret_cast<SDL_GPUComputePass *>(computePass),
+                                     static_cast<Uint32>(slot), ptrs.data(),
+                                     static_cast<Uint32>(count));
+}
+
+SDLJNI_FUNC(void) SDLJNI_NAME(gpuDispatchCompute)(JNIEnv *, jclass, jlong computePass,
+                                                  jint groupCountX, jint groupCountY,
+                                                  jint groupCountZ) {
+    SDL_DispatchGPUCompute(reinterpret_cast<SDL_GPUComputePass *>(computePass),
+                           static_cast<Uint32>(groupCountX), static_cast<Uint32>(groupCountY),
+                           static_cast<Uint32>(groupCountZ));
+}
+
+// Pushes compute uniform data (SDL_PushGPUComputeUniformData lives on the
+// command buffer, not the pass; pass the command buffer handle).
+SDLJNI_FUNC(void) SDLJNI_NAME(gpuPushComputeUniformData)(JNIEnv *env, jclass, jlong commandBuffer,
+                                                         jint slot, jbyteArray data) {
+    jsize len = env->GetArrayLength(data);
+    if (len <= 0) return;
+    std::vector<jbyte> buffer(static_cast<size_t>(len));
+    env->GetByteArrayRegion(data, 0, len, buffer.data());
+    SDL_PushGPUComputeUniformData(reinterpret_cast<SDL_GPUCommandBuffer *>(commandBuffer), slot,
+                                  buffer.data(), static_cast<Uint32>(len));
 }
 
 // The sdl-kmp common API uses the "number of samples" convention (1, 2, 4,
@@ -406,9 +661,47 @@ SDLJNI_FUNC(jlong) SDLJNI_NAME(gpuCreateSampler)(JNIEnv *, jclass, jlong device,
         SDL_CreateGPUSampler(reinterpret_cast<SDL_GPUDevice *>(device), &info));
 }
 
+// code: the compute shader bytecode. numSamplers/numReadonly*/numReadwrite*/
+// numUniformBuffers/threadcount* are scalars (see SDL_GPUComputePipelineCreateInfo).
+SDLJNI_FUNC(jlong) SDLJNI_NAME(gpuCreateComputePipeline)(
+    JNIEnv *env, jclass, jlong device, jbyteArray code, jint format, jstring entryPoint,
+    jint numSamplers, jint numReadonlyStorageTextures, jint numReadonlyStorageBuffers,
+    jint numReadwriteStorageTextures, jint numReadwriteStorageBuffers, jint numUniformBuffers,
+    jint threadcountX, jint threadcountY, jint threadcountZ) {
+    jsize len = env->GetArrayLength(code);
+    if (len <= 0) return 0;
+    std::vector<jbyte> buffer(static_cast<size_t>(len));
+    env->GetByteArrayRegion(code, 0, len, buffer.data());
+    const char *entry = entryPoint ? env->GetStringUTFChars(entryPoint, nullptr) : "";
+    SDL_GPUComputePipelineCreateInfo info{};
+    info.code_size = static_cast<size_t>(len);
+    info.code = reinterpret_cast<const Uint8 *>(buffer.data());
+    info.entrypoint = entry;
+    info.format = static_cast<SDL_GPUShaderFormat>(format);
+    info.num_samplers = static_cast<Uint32>(numSamplers);
+    info.num_readonly_storage_textures = static_cast<Uint32>(numReadonlyStorageTextures);
+    info.num_readonly_storage_buffers = static_cast<Uint32>(numReadonlyStorageBuffers);
+    info.num_readwrite_storage_textures = static_cast<Uint32>(numReadwriteStorageTextures);
+    info.num_readwrite_storage_buffers = static_cast<Uint32>(numReadwriteStorageBuffers);
+    info.num_uniform_buffers = static_cast<Uint32>(numUniformBuffers);
+    info.threadcount_x = static_cast<Uint32>(threadcountX);
+    info.threadcount_y = static_cast<Uint32>(threadcountY);
+    info.threadcount_z = static_cast<Uint32>(threadcountZ);
+    SDL_GPUComputePipeline *pipeline = SDL_CreateGPUComputePipeline(
+        reinterpret_cast<SDL_GPUDevice *>(device), &info);
+    if (entryPoint) env->ReleaseStringUTFChars(entryPoint, entry);
+    return reinterpret_cast<jlong>(pipeline);
+}
+
 SDLJNI_FUNC(void) SDLJNI_NAME(gpuReleaseShader)(JNIEnv *, jclass, jlong device, jlong shader) {
     SDL_ReleaseGPUShader(reinterpret_cast<SDL_GPUDevice *>(device),
                          reinterpret_cast<SDL_GPUShader *>(shader));
+}
+
+SDLJNI_FUNC(void) SDLJNI_NAME(gpuReleaseComputePipeline)(JNIEnv *, jclass, jlong device,
+                                                         jlong pipeline) {
+    SDL_ReleaseGPUComputePipeline(reinterpret_cast<SDL_GPUDevice *>(device),
+                                  reinterpret_cast<SDL_GPUComputePipeline *>(pipeline));
 }
 
 SDLJNI_FUNC(void) SDLJNI_NAME(gpuReleaseGraphicsPipeline)(JNIEnv *, jclass, jlong device,

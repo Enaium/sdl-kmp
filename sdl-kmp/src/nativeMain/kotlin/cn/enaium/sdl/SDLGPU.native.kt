@@ -26,6 +26,8 @@ package cn.enaium.sdl
 
 import cnames.structs.SDL_GPUCommandBuffer
 import cnames.structs.SDL_GPUBuffer
+import cnames.structs.SDL_GPUComputePass
+import cnames.structs.SDL_GPUComputePipeline
 import cnames.structs.SDL_GPUDevice
 import cnames.structs.SDL_GPUFence
 import cnames.structs.SDL_GPUGraphicsPipeline
@@ -150,6 +152,20 @@ internal class NativeSDLGPUGraphicsPipeline internal constructor(raw: CPointer<S
         val pipeline = raw ?: return
         raw = null
         SDL_ReleaseGPUGraphicsPipeline(device.check(), pipeline)
+    }
+}
+
+internal class NativeSDLGPUComputePipeline internal constructor(raw: CPointer<SDL_GPUComputePipeline>?, private val device: NativeSDLGPUDevice) : SDLGPUComputePipeline {
+
+    internal var raw: CPointer<SDL_GPUComputePipeline>? = raw
+
+    override val ptr: Long
+        get() = raw?.rawValue?.toLong() ?: 0L
+
+    override fun close() {
+        val pipeline = raw ?: return
+        raw = null
+        SDL_ReleaseGPUComputePipeline(device.check(), pipeline)
     }
 }
 
@@ -352,6 +368,26 @@ internal class NativeSDLGPURenderPass internal constructor(
         SDL_BindGPUFragmentSamplers(check(), slot.toUInt(), arr, bindings.size.toUInt())
     }
 
+    override fun bindGraphicsStorageTextures(slot: Int, vararg textures: SDLGPUTexture) = memScoped {
+        if (textures.isEmpty()) return
+        val arr = allocArray<CPointerVar<SDL_GPUTexture>>(textures.size)
+        for (i in textures.indices) {
+            arr[i] = textures[i].nativePtr
+                ?: throw IllegalArgumentException("texture is not a native SDL GPU texture")
+        }
+        SDL_BindGPUFragmentStorageTextures(check(), slot.toUInt(), arr, textures.size.toUInt())
+    }
+
+    override fun bindGraphicsStorageBuffers(slot: Int, vararg buffers: SDLGPUBuffer) = memScoped {
+        if (buffers.isEmpty()) return
+        val arr = allocArray<CPointerVar<SDL_GPUBuffer>>(buffers.size)
+        for (i in buffers.indices) {
+            arr[i] = buffers[i].nativePtr
+                ?: throw IllegalArgumentException("buffer is not a native SDL GPU buffer")
+        }
+        SDL_BindGPUFragmentStorageBuffers(check(), slot.toUInt(), arr, buffers.size.toUInt())
+    }
+
     override fun pushVertexUniformData(slot: Int, data: ByteArray) {
         val cmd = commandBuffer ?: throw IllegalStateException("no command buffer for render pass")
         data.usePinned { pinned ->
@@ -371,6 +407,79 @@ internal class NativeSDLGPURenderPass internal constructor(
         val pass = raw ?: return
         raw = null
         SDL_EndGPURenderPass(pass)
+    }
+
+    override fun close() = end()
+}
+
+internal class NativeSDLGPUComputePass internal constructor(
+    raw: CPointer<SDL_GPUComputePass>?,
+    private val device: NativeSDLGPUDevice,
+    private val commandBuffer: CPointer<SDL_GPUCommandBuffer>?,
+) : SDLGPUComputePass {
+
+    internal var raw: CPointer<SDL_GPUComputePass>? = raw
+
+    override val ptr: Long
+        get() = raw?.rawValue?.toLong() ?: 0L
+
+    private fun check(): CPointer<SDL_GPUComputePass> =
+        raw ?: throw IllegalStateException("SDL GPU compute pass is closed")
+
+    override fun bindComputePipeline(pipeline: SDLGPUComputePipeline) {
+        val p = (pipeline as? NativeSDLGPUComputePipeline)?.raw
+            ?: throw IllegalArgumentException("pipeline is not a native SDL GPU compute pipeline")
+        SDL_BindGPUComputePipeline(check(), p)
+    }
+
+    override fun bindComputeSamplers(slot: Int, vararg bindings: Pair<SDLGPUTexture, SDLGPUSampler>) = memScoped {
+        if (bindings.isEmpty()) return
+        val arr = allocArray<SDL_GPUTextureSamplerBinding>(bindings.size)
+        for (i in bindings.indices) {
+            val (texture, sampler) = bindings[i]
+            arr[i].texture = texture.nativePtr
+                ?: throw IllegalArgumentException("texture is not a native SDL GPU texture")
+            arr[i].sampler = sampler.nativePtr
+                ?: throw IllegalArgumentException("sampler is not a native SDL GPU sampler")
+        }
+        SDL_BindGPUComputeSamplers(check(), slot.toUInt(), arr, bindings.size.toUInt())
+    }
+
+    override fun bindComputeStorageTextures(slot: Int, vararg textures: SDLGPUTexture) = memScoped {
+        if (textures.isEmpty()) return
+        val arr = allocArray<CPointerVar<SDL_GPUTexture>>(textures.size)
+        for (i in textures.indices) {
+            arr[i] = textures[i].nativePtr
+                ?: throw IllegalArgumentException("texture is not a native SDL GPU texture")
+        }
+        SDL_BindGPUComputeStorageTextures(check(), slot.toUInt(), arr, textures.size.toUInt())
+    }
+
+    override fun bindComputeStorageBuffers(slot: Int, vararg buffers: SDLGPUBuffer) = memScoped {
+        if (buffers.isEmpty()) return
+        val arr = allocArray<CPointerVar<SDL_GPUBuffer>>(buffers.size)
+        for (i in buffers.indices) {
+            arr[i] = buffers[i].nativePtr
+                ?: throw IllegalArgumentException("buffer is not a native SDL GPU buffer")
+        }
+        SDL_BindGPUComputeStorageBuffers(check(), slot.toUInt(), arr, buffers.size.toUInt())
+    }
+
+    override fun pushUniformData(slot: Int, data: ByteArray) {
+        val cmd = commandBuffer ?: throw IllegalStateException("no command buffer for compute pass")
+        data.usePinned { pinned ->
+            SDL_PushGPUComputeUniformData(cmd, slot.toUInt(), pinned.addressOf(0), data.size.toUInt())
+        }
+    }
+
+    override fun dispatch(groupCountX: Int, groupCountY: Int, groupCountZ: Int) {
+        SDL_DispatchGPUCompute(check(), groupCountX.toUInt(), groupCountY.toUInt(), groupCountZ.toUInt())
+    }
+
+    override fun end() {
+        val pass = raw ?: return
+        raw = null
+        SDL_EndGPUComputePass(pass)
     }
 
     override fun close() = end()
@@ -459,6 +568,105 @@ internal class NativeSDLGPUCommandBuffer internal constructor(
         // The command buffer is submitted through SDLGPUDevice.submit; mark
         // it as no longer usable here so accidental double use fails fast.
         if (raw == null) throw IllegalStateException("SDL GPU command buffer is closed")
+    }
+
+    override fun beginComputePass(
+        storageTextures: List<SDLGPUStorageTextureBinding>,
+        storageBuffers: List<SDLGPUStorageBufferBinding>,
+    ): SDLGPUComputePass? = memScoped {
+        val texBindings = allocArray<SDL_GPUStorageTextureReadWriteBinding>(storageTextures.size)
+        for (i in storageTextures.indices) {
+            val t = storageTextures[i]
+            texBindings[i].texture = t.texture.nativePtr
+                ?: throw IllegalArgumentException("storage texture is not a native SDL GPU texture")
+            texBindings[i].mip_level = t.mipLevel.toUInt()
+            texBindings[i].layer = t.layer.toUInt()
+            texBindings[i].cycle = t.cycle
+        }
+        val bufBindings = allocArray<SDL_GPUStorageBufferReadWriteBinding>(storageBuffers.size)
+        for (i in storageBuffers.indices) {
+            val b = storageBuffers[i]
+            bufBindings[i].buffer = b.buffer.nativePtr
+                ?: throw IllegalArgumentException("storage buffer is not a native SDL GPU buffer")
+            bufBindings[i].cycle = b.cycle
+        }
+        val pass = SDL_BeginGPUComputePass(
+            check(),
+            texBindings, storageTextures.size.toUInt(),
+            bufBindings, storageBuffers.size.toUInt(),
+        ) ?: return null
+        NativeSDLGPUComputePass(pass, device, raw)
+    }
+
+    override fun blit(info: SDLGPUBlitInfo): Boolean = memScoped {
+        val blit = alloc<SDL_GPUBlitInfo>()
+        val src = info.source
+        blit.source.texture = src.texture.nativePtr
+            ?: throw IllegalArgumentException("blit source is not a native SDL GPU texture")
+        blit.source.mip_level = src.mipLevel.toUInt()
+        blit.source.layer_or_depth_plane = src.layerOrDepthPlane.toUInt()
+        blit.source.x = src.x.toUInt()
+        blit.source.y = src.y.toUInt()
+        blit.source.w = src.width.toUInt()
+        blit.source.h = src.height.toUInt()
+        val dst = info.destination
+        blit.destination.texture = dst.texture.nativePtr
+            ?: throw IllegalArgumentException("blit destination is not a native SDL GPU texture")
+        blit.destination.mip_level = dst.mipLevel.toUInt()
+        blit.destination.layer_or_depth_plane = dst.layerOrDepthPlane.toUInt()
+        blit.destination.x = dst.x.toUInt()
+        blit.destination.y = dst.y.toUInt()
+        blit.destination.w = dst.width.toUInt()
+        blit.destination.h = dst.height.toUInt()
+        blit.load_op = loadOpOf(info.loadOp)
+        blit.clear_color.r = info.clearColor.r / 255f
+        blit.clear_color.g = info.clearColor.g / 255f
+        blit.clear_color.b = info.clearColor.b / 255f
+        blit.clear_color.a = info.clearColor.a / 255f
+        // SDL_FLIP_* values (0..3) match SDLFlipMode exactly; the cinterop
+// binding exposes the field as a plain integer.
+        blit.flip_mode = info.flipMode.toUInt()
+        blit.filter = filterOf(info.filter)
+        blit.cycle = info.cycle
+        SDL_BlitGPUTexture(check(), blit.ptr)
+        true
+    }
+
+    override fun copyTextureToTexture(
+        source: SDLGPUTexture,
+        destination: SDLGPUTexture,
+        width: Int,
+        height: Int,
+        depth: Int,
+        sourceX: Int,
+        sourceY: Int,
+        sourceZ: Int,
+        destinationX: Int,
+        destinationY: Int,
+        destinationZ: Int,
+    ): Boolean = memScoped {
+        val src = source.nativePtr
+            ?: throw IllegalArgumentException("copy source is not a native SDL GPU texture")
+        val dst = destination.nativePtr
+            ?: throw IllegalArgumentException("copy destination is not a native SDL GPU texture")
+        val srcLoc = alloc<SDL_GPUTextureLocation>()
+        srcLoc.texture = src
+        srcLoc.mip_level = 0u
+        srcLoc.layer = 0u
+        srcLoc.x = sourceX.toUInt()
+        srcLoc.y = sourceY.toUInt()
+        srcLoc.z = sourceZ.toUInt()
+        val dstLoc = alloc<SDL_GPUTextureLocation>()
+        dstLoc.texture = dst
+        dstLoc.mip_level = 0u
+        dstLoc.layer = 0u
+        dstLoc.x = destinationX.toUInt()
+        dstLoc.y = destinationY.toUInt()
+        dstLoc.z = destinationZ.toUInt()
+        val pass = SDL_BeginGPUCopyPass(check()) ?: return false
+        SDL_CopyGPUTextureToTexture(pass, srcLoc.ptr, dstLoc.ptr, width.toUInt(), height.toUInt(), depth.toUInt(), false)
+        SDL_EndGPUCopyPass(pass)
+        true
     }
 
     override fun close() {
@@ -679,6 +887,33 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
         info.max_anisotropy = createInfo.maxAnisotropy
         val sampler = SDL_CreateGPUSampler(check(), info.ptr) ?: return null
         NativeSDLGPUSampler(sampler, this@NativeSDLGPUDevice)
+    }
+
+    override fun createComputePipeline(createInfo: SDLGPUComputePipelineCreateInfo): SDLGPUComputePipeline? = memScoped {
+        val info = alloc<SDL_GPUComputePipelineCreateInfo>()
+        val arr = allocArray<UByteVar>(createInfo.code.size)
+        for (i in createInfo.code.indices) arr[i] = createInfo.code[i].toUByte()
+        val entry = createInfo.entryPoint.cstr.ptr
+        info.code_size = createInfo.code.size.convert()
+        info.code = arr.reinterpret()
+        info.entrypoint = entry
+        info.format = createInfo.format.toUInt()
+        info.num_samplers = createInfo.numSamplers.toUInt()
+        info.num_readonly_storage_textures = createInfo.numReadonlyStorageTextures.toUInt()
+        info.num_readonly_storage_buffers = createInfo.numReadonlyStorageBuffers.toUInt()
+        info.num_readwrite_storage_textures = createInfo.numReadwriteStorageTextures.toUInt()
+        info.num_readwrite_storage_buffers = createInfo.numReadwriteStorageBuffers.toUInt()
+        info.num_uniform_buffers = createInfo.numUniformBuffers.toUInt()
+        info.threadcount_x = createInfo.threadcountX.toUInt()
+        info.threadcount_y = createInfo.threadcountY.toUInt()
+        info.threadcount_z = createInfo.threadcountZ.toUInt()
+        val pipeline = SDL_CreateGPUComputePipeline(check(), info.ptr) ?: return null
+        NativeSDLGPUComputePipeline(pipeline, this@NativeSDLGPUDevice)
+    }
+
+    override fun adoptTexture(rawPtr: Long, bytesPerPixel: Int): SDLGPUTexture {
+        if (rawPtr == 0L) throw IllegalArgumentException("cannot adopt a null texture")
+        return NativeSDLGPUTexture(rawPtr.toCPointer<SDL_GPUTexture>(), this@NativeSDLGPUDevice, bytesPerPixel)
     }
 
     override fun beginCommandBuffer(): SDLGPUCommandBuffer? {

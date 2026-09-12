@@ -378,12 +378,76 @@ data class SDLGPUViewport(
     val maxDepth: Float = 1f,
 )
 
+/** A texture region for blits and copies. */
+data class SDLGPUBlitRegion(
+    val texture: SDLGPUTexture,
+    val mipLevel: Int = 0,
+    val layerOrDepthPlane: Int = 0,
+    val x: Int = 0,
+    val y: Int = 0,
+    val width: Int,
+    val height: Int,
+)
+
+/**
+ * Describes a blit to [SDLGPUCommandBuffer.blit].
+ *
+ * The source and destination regions can have different sizes (the source
+ * is scaled to the destination); [flipMode] uses the [SDLFlipMode] values.
+ */
+data class SDLGPUBlitInfo(
+    val source: SDLGPUBlitRegion,
+    val destination: SDLGPUBlitRegion,
+    val loadOp: Int = SDLGPULoadOp.CLEAR,
+    val clearColor: SDLColor = SDLColor(0, 0, 0, 255),
+    val flipMode: Int = SDLFlipMode.NONE,
+    val filter: Int = SDLGPUFilter.NEAREST,
+    val cycle: Boolean = false,
+)
+
+/** A storage texture binding for a compute pass. */
+data class SDLGPUStorageTextureBinding(
+    val texture: SDLGPUTexture,
+    val mipLevel: Int = 0,
+    val layer: Int = 0,
+    val cycle: Boolean = false,
+)
+
+/** A storage buffer binding for a compute pass. */
+data class SDLGPUStorageBufferBinding(
+    val buffer: SDLGPUBuffer,
+    val cycle: Boolean = false,
+)
+
+/** Describes a compute pipeline to [SDLGPUDevice.createComputePipeline]. */
+data class SDLGPUComputePipelineCreateInfo(
+    val code: ByteArray,
+    val format: Int,
+    val entryPoint: String,
+    val numSamplers: Int = 0,
+    val numReadonlyStorageTextures: Int = 0,
+    val numReadonlyStorageBuffers: Int = 0,
+    val numReadwriteStorageTextures: Int = 0,
+    val numReadwriteStorageBuffers: Int = 0,
+    val numUniformBuffers: Int = 0,
+    val threadcountX: Int = 1,
+    val threadcountY: Int = 1,
+    val threadcountZ: Int = 1,
+)
+
 // =========================================================================
 // GPU handles
 // =========================================================================
 
 /** A graphics pipeline, see [SDLGPUDevice.createGraphicsPipeline]. */
 interface SDLGPUGraphicsPipeline : AutoCloseable {
+    /** The raw SDL handle address, or 0 after [close]. */
+    val ptr: Long
+    override fun close()
+}
+
+/** A compute pipeline, see [SDLGPUDevice.createComputePipeline]. */
+interface SDLGPUComputePipeline : AutoCloseable {
     /** The raw SDL handle address, or 0 after [close]. */
     val ptr: Long
     override fun close()
@@ -462,11 +526,31 @@ interface SDLGPURenderPass : AutoCloseable {
      * and the sampler), which the Vulkan backend requires.
      */
     fun bindGraphicsTextureSamplers(slot: Int, vararg bindings: Pair<SDLGPUTexture, SDLGPUSampler>)
+    fun bindGraphicsStorageTextures(slot: Int, vararg textures: SDLGPUTexture)
+    fun bindGraphicsStorageBuffers(slot: Int, vararg buffers: SDLGPUBuffer)
     fun pushVertexUniformData(slot: Int, data: ByteArray)
     fun drawPrimitives(vertexCount: Int, instanceCount: Int = 1, firstVertex: Int = 0, firstInstance: Int = 0)
     fun drawIndexedPrimitives(indexCount: Int, instanceCount: Int = 1, firstIndex: Int = 0, vertexOffset: Int = 0, firstInstance: Int = 0)
 
     /** Ends the render pass. */
+    fun end()
+
+    override fun close()
+}
+
+/** An active compute pass on a [SDLGPUCommandBuffer]. */
+interface SDLGPUComputePass : AutoCloseable {
+    /** The raw SDL handle address, or 0 after [close]. */
+    val ptr: Long
+
+    fun bindComputePipeline(pipeline: SDLGPUComputePipeline)
+    fun bindComputeSamplers(slot: Int, vararg bindings: Pair<SDLGPUTexture, SDLGPUSampler>)
+    fun bindComputeStorageTextures(slot: Int, vararg textures: SDLGPUTexture)
+    fun bindComputeStorageBuffers(slot: Int, vararg buffers: SDLGPUBuffer)
+    fun pushUniformData(slot: Int, data: ByteArray)
+    fun dispatch(groupCountX: Int, groupCountY: Int = 1, groupCountZ: Int = 1)
+
+    /** Ends the compute pass. */
     fun end()
 
     override fun close()
@@ -479,6 +563,39 @@ interface SDLGPUCommandBuffer : AutoCloseable {
 
     /** Begins a render pass targeting the given [colorTargets]; returns null on failure. */
     fun beginRenderPass(colorTargets: List<SDLGPUColorTargetInfo>): SDLGPURenderPass?
+
+    /**
+     * Begins a compute pass writing to the given storage textures/buffers
+     * (must have COMPUTE_STORAGE_WRITE usage); returns null on failure.
+     */
+    fun beginComputePass(
+        storageTextures: List<SDLGPUStorageTextureBinding> = emptyList(),
+        storageBuffers: List<SDLGPUStorageBufferBinding> = emptyList(),
+    ): SDLGPUComputePass?
+
+    /**
+     * Blits [source] into [destination] (scaling when the sizes differ).
+     * Must be called outside any pass. Returns false on failure.
+     */
+    fun blit(info: SDLGPUBlitInfo): Boolean
+
+    /**
+     * Copies [source] into [destination] at [width]x[height]x[depth] with
+     * a copy pass inside this command buffer. Returns false on failure.
+     */
+    fun copyTextureToTexture(
+        source: SDLGPUTexture,
+        destination: SDLGPUTexture,
+        width: Int,
+        height: Int,
+        depth: Int = 1,
+        sourceX: Int = 0,
+        sourceY: Int = 0,
+        sourceZ: Int = 0,
+        destinationX: Int = 0,
+        destinationY: Int = 0,
+        destinationZ: Int = 0,
+    ): Boolean
 
     fun pushVertexUniformData(slot: Int, data: ByteArray)
     fun pushFragmentUniformData(slot: Int, data: ByteArray)
@@ -550,8 +667,21 @@ interface SDLGPUDevice : AutoCloseable {
     /** Creates a graphics pipeline, or null on failure. */
     fun createGraphicsPipeline(createInfo: SDLGPUGraphicsPipelineCreateInfo): SDLGPUGraphicsPipeline?
 
+    /** Creates a compute pipeline, or null on failure. */
+    fun createComputePipeline(createInfo: SDLGPUComputePipelineCreateInfo): SDLGPUComputePipeline?
+
     /** Creates a sampler, or null on failure. */
     fun createSampler(createInfo: SDLGPUSamplerCreateInfo = SDLGPUSamplerCreateInfo()): SDLGPUSampler?
+
+    /**
+     * Wraps a raw SDL_GPUTexture handle created by another library (e.g.
+     * SDL_image's IMG_LoadGPUTexture) into an [SDLGPUTexture] owned by this
+     * device. [bytesPerPixel] is the texel size of the texture's format
+     * (used by [SDLGPUTexture.upload] to convert row strides); pass 0 for
+     * unknown formats. The caller must NOT close the raw handle themselves;
+     * close the returned wrapper instead.
+     */
+    fun adoptTexture(rawPtr: Long, bytesPerPixel: Int = 4): SDLGPUTexture
 
     /** Begins a command buffer, or null on failure. */
     fun beginCommandBuffer(): SDLGPUCommandBuffer?

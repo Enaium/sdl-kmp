@@ -646,6 +646,7 @@ internal object Jni {
     ): Long
     external fun gpuReleaseShader(device: Long, shader: Long)
     external fun gpuReleaseGraphicsPipeline(device: Long, pipeline: Long)
+    external fun gpuReleaseComputePipeline(device: Long, pipeline: Long)
     external fun gpuReleaseTexture(device: Long, texture: Long)
     external fun gpuReleaseBuffer(device: Long, buffer: Long)
     external fun gpuReleaseSampler(device: Long, sampler: Long)
@@ -658,6 +659,54 @@ internal object Jni {
     external fun gpuDownloadFromTexture(device: Long, texture: Long, w: Int, h: Int): ByteArray?
     external fun gpuWaitAndAcquireSwapchainTexture(commandBuffer: Long, window: Long): LongArray?
     external fun gpuWaitForGPUSwapchain(device: Long, window: Long): Boolean
+    external fun gpuBindVertexStorageTextures(renderPass: Long, slot: Int, textures: LongArray)
+    external fun gpuBindVertexStorageBuffers(renderPass: Long, slot: Int, buffers: LongArray)
+    external fun gpuBindFragmentStorageTextures(renderPass: Long, slot: Int, textures: LongArray)
+    external fun gpuBindFragmentStorageBuffers(renderPass: Long, slot: Int, buffers: LongArray)
+    external fun gpuBlit(
+        commandBuffer: Long,
+        srcTexture: Long, srcMip: Int, srcLayer: Int, srcX: Int, srcY: Int, srcW: Int, srcH: Int,
+        dstTexture: Long, dstMip: Int, dstLayer: Int, dstX: Int, dstY: Int, dstW: Int, dstH: Int,
+        loadOp: Int, clearR: Float, clearG: Float, clearB: Float, clearA: Float,
+        flipMode: Int, filter: Int, cycle: Boolean,
+    ): Boolean
+    external fun gpuCopyTextureToTexture(
+        commandBuffer: Long,
+        srcTexture: Long, srcMip: Int, srcLayer: Int, srcX: Int, srcY: Int, srcZ: Int,
+        dstTexture: Long, dstMip: Int, dstLayer: Int, dstX: Int, dstY: Int, dstZ: Int,
+        w: Int, h: Int, d: Int,
+    ): Boolean
+    external fun gpuCreateComputePipeline(
+        device: Long,
+        code: ByteArray,
+        format: Int,
+        entryPoint: String,
+        numSamplers: Int,
+        numReadonlyStorageTextures: Int,
+        numReadonlyStorageBuffers: Int,
+        numReadwriteStorageTextures: Int,
+        numReadwriteStorageBuffers: Int,
+        numUniformBuffers: Int,
+        threadcountX: Int,
+        threadcountY: Int,
+        threadcountZ: Int,
+    ): Long
+    external fun gpuBeginComputePass(
+        commandBuffer: Long,
+        storageTextures: LongArray?,
+        storageTextureMips: IntArray?,
+        storageTextureLayers: IntArray?,
+        storageTextureCycles: BooleanArray?,
+        storageBuffers: LongArray?,
+        storageBufferCycles: BooleanArray?,
+    ): Long
+    external fun gpuEndComputePass(computePass: Long)
+    external fun gpuBindComputePipeline(computePass: Long, pipeline: Long)
+    external fun gpuBindComputeSamplers(computePass: Long, slot: Int, textures: LongArray, samplers: LongArray)
+    external fun gpuBindComputeStorageTextures(computePass: Long, slot: Int, textures: LongArray)
+    external fun gpuBindComputeStorageBuffers(computePass: Long, slot: Int, buffers: LongArray)
+    external fun gpuDispatchCompute(computePass: Long, groupCountX: Int, groupCountY: Int, groupCountZ: Int)
+    external fun gpuPushComputeUniformData(commandBuffer: Long, slot: Int, data: ByteArray)
 
     // =========================================================================
     // IO
