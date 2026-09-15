@@ -38,6 +38,7 @@ import kotlin.concurrent.AtomicInt
 import kotlin.concurrent.AtomicLong
 import kotlin.concurrent.AtomicReference
 import kotlinx.cinterop.*
+import platform.posix.memcpy
 import sdl3.*
 
 // =========================================================================
@@ -406,13 +407,17 @@ actual object SDLIO {
 
     actual fun fromMem(data: ByteArray): SDLIOStream? = memScoped {
         val ptr = allocArray<ByteVar>(data.size)
-        for (i in data.indices) ptr[i] = data[i].toByte()
+        if (data.isNotEmpty()) {
+            data.usePinned { pinned -> memcpy(ptr, pinned.addressOf(0), data.size.convert()) }
+        }
         SDL_kmp_IOFromMem(ptr, data.size)?.let { NativeSDLIOStream(it, owned = true) }
     }
 
     actual fun fromConstMem(data: ByteArray): SDLIOStream? = memScoped {
         val ptr = allocArray<ByteVar>(data.size)
-        for (i in data.indices) ptr[i] = data[i].toByte()
+        if (data.isNotEmpty()) {
+            data.usePinned { pinned -> memcpy(ptr, pinned.addressOf(0), data.size.convert()) }
+        }
         SDL_kmp_IOFromConstMem(ptr, data.size)?.let { NativeSDLIOStream(it, owned = true) }
     }
 

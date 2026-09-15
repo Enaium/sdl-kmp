@@ -38,6 +38,7 @@ import cnames.structs.SDL_GPUTexture
 import cnames.structs.SDL_GPUTransferBuffer
 import cnames.structs.SDL_Window
 import kotlinx.cinterop.*
+import platform.posix.memcpy
 import sdl3.*
 
 private fun textureTypeOf(value: Int): SDL_GPUTextureType = when (value) {
@@ -541,10 +542,11 @@ internal class NativeSDLGPUCommandBuffer internal constructor(
         val tbuffer = SDL_CreateGPUTransferBuffer(dev, transfer.ptr) ?: return false
         try {
             val mapped = SDL_MapGPUTransferBuffer(dev, tbuffer, false) ?: return false
-            data.usePinned { pinned ->
-                val src = pinned.addressOf(0).reinterpret<ByteVar>()
-                val dst = mapped.reinterpret<ByteVar>()
-                for (i in 0 until data.size) dst[i] = src[i]
+            // memcpy, not a byte-by-byte Kotlin loop: this uploads the whole
+            // vertex/index payload of a frame, and the loop was the single
+            // largest cost of the GPU backend on native.
+            if (data.isNotEmpty()) {
+                data.usePinned { pinned -> memcpy(mapped, pinned.addressOf(0), data.size.convert()) }
             }
             SDL_UnmapGPUTransferBuffer(dev, tbuffer)
 
@@ -964,10 +966,8 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
         val tbuffer = SDL_CreateGPUTransferBuffer(check(), transfer.ptr) ?: return false
         try {
             val mapped = SDL_MapGPUTransferBuffer(check(), tbuffer, false) ?: return false
-            data.usePinned { pinned ->
-                val src = pinned.addressOf(0).reinterpret<ByteVar>()
-                val dst = mapped.reinterpret<ByteVar>()
-                for (i in 0 until data.size) dst[i] = src[i]
+            if (data.isNotEmpty()) {
+                data.usePinned { pinned -> memcpy(mapped, pinned.addressOf(0), data.size.convert()) }
             }
             SDL_UnmapGPUTransferBuffer(check(), tbuffer)
 
@@ -997,10 +997,8 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
         val buffer = SDL_CreateGPUTransferBuffer(check(), transfer.ptr) ?: return false
         try {
             val mapped = SDL_MapGPUTransferBuffer(check(), buffer, false) ?: return false
-            data.usePinned { pinned ->
-                val src = pinned.addressOf(0).reinterpret<ByteVar>()
-                val dst = mapped.reinterpret<ByteVar>()
-                for (i in 0 until data.size) dst[i] = src[i]
+            if (data.isNotEmpty()) {
+                data.usePinned { pinned -> memcpy(mapped, pinned.addressOf(0), data.size.convert()) }
             }
             SDL_UnmapGPUTransferBuffer(check(), buffer)
 
@@ -1070,8 +1068,9 @@ internal class NativeSDLGPUDevice internal constructor(raw: CPointer<SDL_GPUDevi
                     fences[0] = fence
                     SDL_WaitForGPUFences(check(), true, fences, 1u)
                     val mapped = SDL_MapGPUTransferBuffer(check(), buffer, false) ?: return null
-                    val src = mapped.reinterpret<ByteVar>()
-                    for (i in 0 until size) result[i] = src[i]
+                    if (size > 0) {
+                        result.usePinned { pinned -> memcpy(pinned.addressOf(0), mapped, size.convert()) }
+                    }
                     SDL_UnmapGPUTransferBuffer(check(), buffer)
                 } finally {
                     SDL_ReleaseGPUFence(check(), fence)

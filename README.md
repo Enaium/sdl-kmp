@@ -37,7 +37,7 @@ Not supported: watchOS (SDL3 has no watchOS support) and visionOS (Kotlin/Native
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("cn.enaium.sdl:sdl-kmp:1.0.12")
+            implementation("cn.enaium.sdl:sdl-kmp:1.0.13")
         }
     }
 }

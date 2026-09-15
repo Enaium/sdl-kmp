@@ -80,5 +80,5 @@ allprojects {
 
 allprojects {
     group = "cn.enaium.sdl"
-    version = "1.0.12"
+    version = "1.0.13"
 }
