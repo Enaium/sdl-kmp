@@ -9,7 +9,7 @@ Kotlin Multiplatform bindings for [SDL3](https://github.com/libsdl-org/SDL), wit
 
 - **JVM**: SDL3 is compiled from this repository's `SDL` submodule into a JNI shared library (`libsdl_jni`) that is built by CMake (`jni/`) and shipped as per-OS/arch `sdl-kmp-jni-jvm-*` artifacts. `NativeLoader` extracts the matching binary at runtime, so consumers need nothing beyond the normal dependencies (no LWJGL, no system SDL).
 - **Native (Kotlin/Native)**: the SDL3 static library from this repository's `SDL` submodule is compiled per target with CMake and **embedded into the published klib**, so consumers get a fully self-contained binary (no dynamic SDL3 dependency). This includes the Android native targets (`androidNative*`), cross-compiled with the Android NDK.
-- **Android (JVM)**: a separate Android AAR (`sdl-kmp-android-jvm`) packages SDL's own `android-project` Java layer (`org.libsdl.app.SDLActivity` and friends) together with the per-ABI `libsdl_jni.so` (SDL3 + JNI bridge, built with the NDK from the same `jni/` sources). Consumers just extend `SDLActivity` — no SDL Java code to copy.
+- **Android (JVM)**: the Android target of `sdl-kmp` plus its `sdl-kmp-android-jvm` companion AAR package the Kotlin bindings, SDL's own `android-project` Java layer (`org.libsdl.app.SDLActivity` and friends) and the per-ABI `libsdl_jni.so` (SDL3 + JNI bridge, built with the NDK from the same `jni/` sources). Depend on `sdl-kmp` alone in `commonMain`; an application written entirely in Kotlin extends `org.libsdl.app.SDLActivity`, returns `"sdl_jni"` from `getLibraries()` and overrides `main()` with its own loop — no native code, no SDL Java code to copy.
 
 All three implementations build SDL3 from the pinned `SDL` submodule; the fixes that must not live in the submodule history are kept under `patches/` and applied idempotently at build time (`applySubmodulePatches`) before any task that compiles the SDL sources.
 
@@ -24,7 +24,7 @@ All three implementations build SDL3 from the pinned `SDL` submodule; the fixes 
 | iOS        | `iosArm64`, `iosX64`, `iosSimulatorArm64`           | cinterop + embedded static SDL3    |
 | tvOS       | `tvosArm64`, `tvosSimulatorArm64`                   | cinterop + embedded static SDL3    |
 | Android (native) | `androidNativeArm64`, `androidNativeArm32`, `androidNativeX64`, `androidNativeX86` | cinterop + embedded static SDL3 (built with the NDK) |
-| Android (JVM) | `sdl-kmp-android-jvm` AAR (`arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86`) | SDL `android-project` Java layer + per-ABI `libsdl_jni.so` |
+| Android (JVM) | `android` target (`sdl-kmp-android` + `sdl-kmp-android-jvm` AARs; `arm64-v8a`, `armeabi-v7a`, `x86_64`, `x86`) | Kotlin/JVM bindings over SDL's `android-project` Java layer + per-ABI `libsdl_jni.so` |
 | Web (browser) | `wasmJs`                                        | SDL3 compiled to a standalone Emscripten module, driven through a JS bridge |
 
 Not supported: watchOS (SDL3 has no watchOS support) and visionOS (Kotlin/Native has no visionOS targets yet).
@@ -165,7 +165,7 @@ SDLGPU.createDevice().use { device ->
 - **JVM native library**: the matching `sdl-kmp-jni-jvm-{os}-{arch}` artifact is a transitive runtime dependency of `sdl-kmp`; `NativeLoader` extracts the bundled `libsdl_jni` from the classpath and `System.load()`s it, so no `java.library.path` setup is needed.
 - On Linux the static SDL3 is built with the X11/Wayland drivers loaded dynamically (`dlopen`), so the published klib has no link-time dependency on X11.
 - **Android (native)**: building an `androidNative*` target requires an installed Android NDK (found under `$ANDROID_HOME/ndk`); the SDL3 static library is cross-compiled with its CMake toolchain. At runtime the app must be launched through `org.libsdl.app.SDLActivity` (or a subclass), which loads the shared library and calls its exported `SDL_main` (see the `examples/sdl_renderer/android` module).
-- **Android (JVM)**: depend on `sdl-kmp-android-jvm` instead of copying `SDLActivity` from the SDL `android-project` — the AAR bundles the `org.libsdl.app` classes (matching the statically linked SDL3 version) and `libsdl_jni.so` for all four NDK ABIs. Write an `Activity` extending `org.libsdl.app.SDLActivity` and return `"sdl_jni"` from `getLibraries()`; the Kotlin `cn.enaium.sdl.SDL` binding is not part of the AAR (it can be added via the `sdl-kmp` JVM artifact).
+- **Android (JVM)**: `sdl-kmp`'s Android target resolves through `sdl-kmp-android` + `sdl-kmp-android-jvm`, which bundle the Kotlin bindings, SDL's `android-project` Java layer (matching the statically linked SDL3 version) and `libsdl_jni.so` for all four NDK ABIs — a `commonMain`-only dependency brings everything in. An application written entirely in Kotlin extends `org.libsdl.app.SDLActivity`, returns `"sdl_jni"` from `getLibraries()` (the one shared object that carries SDL3, the JNI bridge and SDL's Java layer) and overrides `main()`: SDL calls it on its dedicated thread, inside SDL's own `nativeInitMainThread`/`nativeCleanupMainThread` handshake, instead of loading a native `SDL_main`, so no native code and no NDK build are needed (see `examples/sdl_renderer/android-jvm-app`).
 
 ### Native linking
 
@@ -178,7 +178,8 @@ All examples live under `examples/` as standalone KMP modules; each provides
 
 - **`examples/sdl_renderer`** — "bouncing box" demo using `SDL_Renderer`
   (renderer, textures, audio, input). Runs on JVM, macOS, Linux, Windows
-  (MinGW) and Android (with its `android` submodule APK).
+  (MinGW) and Android, with two app submodules: `android` (Kotlin/Native
+  `libmain.so`) and `android-jvm-app` (pure Kotlin/JVM, no native code).
 - **`examples/sdl_vulkan`** — minimal Vulkan triangle (gradient shaders) on
   JVM, macOS, Linux and Windows. On the JVM the renderer uses the LWJGL
   Vulkan bindings (the example's own dependency - the sdl-kmp library itself
@@ -263,21 +264,30 @@ SDL_VIDEO_DRIVER=dummy ./gradlew :examples:sdl_renderer:runDebugExecutableLinuxX
 
 ### Android examples
 
-The `sdl_renderer` and `sdl_gpu` examples each have an `android` submodule:
-an Android application (AGP) that runs the same demo. The KMP module builds
-`libmain.so` for every `androidNative` ABI (exporting `SDL_main` from
-`androidMain`); the Android app copies those into its `jniLibs` and its
-`MainActivity` extends `org.libsdl.app.SDLActivity` (loaded from the SDL
-submodule so it matches the statically linked SDL3 version), which loads
-`libmain.so` and calls `SDL_main`.
+**Kotlin/Native (native `SDL_main`)**: the `sdl_renderer`, `sdl_gpu` and
+`sdl_opengl_es` examples each have an `android` submodule. The KMP module
+builds `libmain.so` for every `androidNative` ABI (exporting `SDL_main` from
+the shared `androidNativeMain` source set); the app copies those into its
+`jniLibs` and its `MainActivity` extends `org.libsdl.app.SDLActivity` (loaded
+from the SDL submodule so it matches the statically linked SDL3 version),
+which loads `libmain.so` and calls `SDL_main`.
+
+**Kotlin/JVM (no native code)**: `examples/sdl_renderer/android-jvm-app` runs
+the same `commonMain` demo entirely on the JVM/ART runtime. Its `MainActivity`
+extends `org.libsdl.app.SDLActivity`, returns `"sdl_jni"` from
+`getLibraries()` and overrides `main()` with the shared blocking loop; SDL, its
+Java layer and `libsdl_jni.so` all arrive through `:sdl-kmp`'s Android variant,
+and `main()` executes on SDL's dedicated thread — nothing is compiled with
+Kotlin/Native or the NDK.
 
 ```bash
-# Build the APKs (requires an Android NDK; install the app on a device/emulator
-# with adb).
+# Build the APKs (requires Android SDK 36; the Kotlin/Native apps also need an
+# Android NDK; install on a device/emulator with adb).
 ./gradlew :examples:sdl_renderer:android:assembleDebug
+./gradlew :examples:sdl_renderer:android-jvm-app:assembleDebug
 ./gradlew :examples:sdl_gpu:android:assembleDebug
 ./gradlew :examples:sdl_opengl_es:android:assembleDebug
-adb install -r examples/sdl_renderer/android/build/outputs/apk/debug/android-debug.apk
+adb install -r examples/sdl_renderer/android-jvm-app/build/outputs/apk/debug/android-jvm-app-debug.apk
 ```
 
 ## Submodule patches
@@ -314,7 +324,7 @@ install these automatically.
 
 ## GitHub Actions
 
-- `.github/workflows/test.yml` — manual trigger: macOS builds all Apple klibs and the `darwin` JNI artifacts and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `linuxArm64`/`mingwX64`, builds the `linux-*` JNI artifacts, and runs the renderer example headless; Windows builds the `windows-x86_64` JNI artifact natively (MinGW) and runs JVM tests; Android installs the NDK, builds the four `androidNative` klibs and assembles the `sdl_renderer`/`sdl_gpu` APKs; Web installs the Emscripten SDK, builds the `wasmJs` klib and the browser example.
+- `.github/workflows/test.yml` — manual trigger: macOS builds all Apple klibs and the `darwin` JNI artifacts and runs JVM + native tests; Linux runs `linuxX64Test`, cross-compiles `linuxArm64`/`mingwX64`, builds the `linux-*` JNI artifacts, and runs the renderer example headless; Windows builds the `windows-x86_64` JNI artifact natively (MinGW) and runs JVM tests; Android installs the NDK, builds the four `androidNative` klibs and assembles the `sdl_renderer`, `sdl_gpu` and `sdl_renderer:android-jvm-app` APKs; Web installs the Emscripten SDK, builds the `wasmJs` klib and the browser example.
 - `.github/workflows/publish.yml` — manual workflow that publishes the metadata + JVM + Apple klibs and the `sdl-kmp-jni-jvm-darwin-*` artifacts from `macos-14`, the `linuxX64`/`linuxArm64`/`mingwX64` klibs and the `sdl-kmp-jni-jvm-linux-*` artifacts from `ubuntu-latest`, `sdl-kmp-jni-jvm-windows-x86_64` from `windows-latest` (native MinGW build), and the four `androidNative` klibs from `ubuntu-latest` (with the NDK) to Maven Central.
 
 Required secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`, `SIGNING_KEY` (base64 GPG keyring), `SIGNING_KEY_ID`, `SIGNING_PASSWORD`.

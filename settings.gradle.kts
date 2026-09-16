@@ -26,6 +26,10 @@ include(":sdl-kmp:wasm")
 
 include(":examples:sdl_renderer")
 include(":examples:sdl_renderer:android")
+// Leaf name must differ from the :android-jvm library project (jni/android-jvm):
+// AGP 9's task graph wires per-project-name and duplicate leaves cause a
+// processDebugResources self-cycle in the consuming app.
+include(":examples:sdl_renderer:android-jvm-app")
 include(":examples:sdl_renderer:browser")
 include(":examples:sdl_vulkan")
 include(":examples:sdl_opengl")

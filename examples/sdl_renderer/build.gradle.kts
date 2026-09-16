@@ -4,6 +4,7 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.android.kmp.library)
 }
 
 // Kotlin/Native's own Android toolchain sysroot (api 26) ships the NDK stub
@@ -30,6 +31,25 @@ kotlin {
     jvm {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_21)
+        }
+    }
+
+    // The pure-JVM Android target: commonMain compiles to dex and drives SDL
+    // through the sdl-kmp JNI bridge. Unlike the androidNative targets below
+    // (Kotlin/Native libmain.so with an exported SDL_main), this path needs no
+    // application native code at all - the android-jvm-app submodule hosts the
+    // Activity, which overrides SDLActivity.main() with the shared loop.
+    android {
+        namespace = "cn.enaium.sdl.example.renderer"
+        compileSdk = 36
+        minSdk = 24
+
+        compilations.configureEach {
+            compileTaskProvider.configure {
+                compilerOptions {
+                    jvmTarget.set(JvmTarget.JVM_21)
+                }
+            }
         }
     }
 
@@ -97,20 +117,23 @@ kotlin {
             dependsOn(nativeMain)
         }
 
-        val androidMain = create("androidMain") {
+        // Shared home of the androidNative SDL_main entry point (libmain.so).
+        // Named androidNativeMain, not androidMain: the latter belongs to the
+        // android (JVM) target declared above, whose sources compile to dex.
+        val androidNativeMain = create("androidNativeMain") {
             dependsOn(getByName("commonMain"))
         }
         androidNativeArm64Main {
-            dependsOn(androidMain)
+            dependsOn(androidNativeMain)
         }
         androidNativeArm32Main {
-            dependsOn(androidMain)
+            dependsOn(androidNativeMain)
         }
         androidNativeX64Main {
-            dependsOn(androidMain)
+            dependsOn(androidNativeMain)
         }
         androidNativeX86Main {
-            dependsOn(androidMain)
+            dependsOn(androidNativeMain)
         }
 
         jvm {
