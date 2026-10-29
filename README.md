@@ -11,7 +11,7 @@ Kotlin Multiplatform bindings for [SDL3](https://github.com/libsdl-org/SDL), wit
 - **Native (Kotlin/Native)**: the SDL3 static library from this repository's `SDL` submodule is compiled per target with CMake and **embedded into the published klib**, so consumers get a fully self-contained binary (no dynamic SDL3 dependency). This includes the Android native targets (`androidNative*`), cross-compiled with the Android NDK.
 - **Android (JVM)**: the Android target of `sdl-kmp` plus its `sdl-kmp-android-jvm` companion AAR package the Kotlin bindings, SDL's own `android-project` Java layer (`org.libsdl.app.SDLActivity` and friends) and the per-ABI `libsdl_jni.so` (SDL3 + JNI bridge, built with the NDK from the same `jni/` sources). Depend on `sdl-kmp` alone in `commonMain`; an application written entirely in Kotlin extends `org.libsdl.app.SDLActivity`, returns `"sdl_jni"` from `getLibraries()` and overrides `main()` with its own loop — no native code, no SDL Java code to copy.
 
-All three implementations build SDL3 from the pinned `SDL` submodule; the fixes that must not live in the submodule history are kept under `patches/` and applied idempotently at build time (`applySubmodulePatches`) before any task that compiles the SDL sources.
+All three implementations build SDL3 from the pinned `SDL` submodule, which tracks the upstream SDL 3.4.18 release and is compiled unmodified.
 
 ## Supported platforms
 
@@ -233,7 +233,8 @@ drivers).
 ```bash
 # Publish the library to the local Maven repository first (macOS builds all
 # Apple targets + JVM + the darwin JNI artifacts; Linux builds the
-# linuxX64/mingwX64 klibs and the linux-x86_64 JNI artifact; Windows (or
+# linuxX64/mingwX64 klibs and the linux-x86_64 JNI artifact; macOS with
+# Homebrew's mingw-w64 also builds the mingwX64 klib; Windows (or
 # Linux with the MinGW x86_64-w64-mingw32 toolchain) builds the
 # windows-x86_64 JNI artifact).
 ./gradlew :sdl-kmp:publishToMavenLocal
@@ -290,16 +291,9 @@ Kotlin/Native or the NDK.
 adb install -r examples/sdl_renderer/android-jvm-app/build/outputs/apk/debug/android-jvm-app-debug.apk
 ```
 
-## Submodule patches
+## Vendored SDL
 
-The `SDL` submodule stays pinned to an upstream commit; fixes live under `patches/SDL.patch` and are applied by the root `applySubmodulePatches` task before any task that configures or compiles the SDL sources (native static libs, per-OS JNI, Android JNI, wasm). The apply is idempotent (`git apply --reverse --check` skips when already applied), so both CI and local builds work from a clean checkout. To update a fix, edit the SDL working tree and regenerate the patch:
-
-```bash
-git -C SDL diff > patches/SDL.patch
-git -C SDL checkout -- .
-```
-
-Current fixes: X11 remote-injected clicks (drop the keyboard-focus requirement for slave pointer buttons) and Cocoa GCMouse/NSEvent duplicate handling (always deliver NSEvent button events; GCMouse is used for raw motion only, so synthetic clicks from remote-control / accessibility tools are no longer dropped).
+The `SDL` submodule tracks the upstream SDL 3.4.18 release commit and is built unmodified; no local patches are applied. Moving to a newer SDL means updating the submodule pointer and rebuilding the per-target static libraries, which are recompiled from the pinned sources automatically.
 
 ## Development
 

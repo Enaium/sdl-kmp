@@ -10,7 +10,11 @@ linkerOpts.osx = -framework Foundation -framework CoreVideo -framework CoreGraph
 linkerOpts.ios = -framework Foundation -framework CoreVideo -framework CoreGraphics -framework QuartzCore -framework Metal -framework CoreAudio -framework AudioToolbox -framework AVFoundation -framework Security -framework UIKit -framework OpenGLES -framework GameController -framework CoreBluetooth -framework UserNotifications -framework CoreMotion -weak_framework CoreHaptics -weak_framework UniformTypeIdentifiers
 linkerOpts.tvos = -framework Foundation -framework CoreVideo -framework CoreGraphics -framework QuartzCore -framework Metal -framework CoreAudio -framework AudioToolbox -framework AVFoundation -framework Security -framework UIKit -framework GameController -framework CoreBluetooth -framework UserNotifications -framework CoreMotion -weak_framework CoreHaptics -weak_framework UniformTypeIdentifiers
 linkerOpts.linux = -lm -ldl -lpthread
-linkerOpts.mingw = -luser32 -lgdi32 -lwinmm -lversion -lsetupapi -limm32 -lole32 -luuid -lcomdlg32 -lshell32
+# Windows system libraries SDL3 references, mirroring `sdl_link_dependency(base
+# LIBS ...)` in SDL's CMakeLists (plus comdlg32). K/N links them against the
+# MinGW sysroot that ships with the compiler; missing entries (e.g. hid) fail
+# the final link with undefined HidD_*/HidP_* symbols.
+linkerOpts.mingw = -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -lhid -lmincore -lcomdlg32
 # Android: SDL3's android drivers reference the NDK system libraries. Most are
 # provided by the Kotlin/Native android sysroot; EGL/GLES/OpenSLES/AAudio come
 # from the NDK, so consumers must add the NDK's <abi>/lib directory to the

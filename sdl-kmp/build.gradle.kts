@@ -20,8 +20,9 @@ val hostArch = System.getProperty("os.arch").lowercase()
 // Apple targets build on macOS via Xcode; linuxX64 is built on Linux hosts;
 // linuxArm64 is built on Linux aarch64 hosts or cross-compiled from x86_64
 // with the aarch64-linux-gnu toolchain; mingwX64 is cross-compiled on Linux
-// hosts with the x86_64-w64-mingw32 toolchain (Windows hosts default to MSVC,
-// whose archives are incompatible with Kotlin/Native's MinGW linker).
+// hosts, or macOS hosts with Homebrew's mingw-w64, using the
+// x86_64-w64-mingw32 toolchain (Windows hosts default to MSVC, whose archives
+// are incompatible with Kotlin/Native's MinGW linker).
 fun hasMingwCrossToolchain(): Boolean {
     val name = "x86_64-w64-mingw32-gcc"
     return System.getenv("PATH")?.split(File.pathSeparator).orEmpty().any { dir ->
@@ -79,6 +80,10 @@ fun canBuildNativeTarget(targetName: String): Boolean {
         hostOs.isLinux && targetName == "linuxArm64" &&
                 (hostArch == "aarch64" || hostArch == "arm64" || hasAarch64CrossToolchain()) -> true
         hostOs.isLinux && targetName == "mingwX64" && hasMingwCrossToolchain() -> true
+        // Homebrew's mingw-w64 gives macOS the same cross toolchain; the
+        // Kotlin/Native compiler ships the matching MinGW sysroot
+        // (msys2-mingw-w64) for the target, so the link works on macOS too.
+        hostOs.isMacOsX && targetName == "mingwX64" && hasMingwCrossToolchain() -> true
         targetName.startsWith("androidNative") && androidNdkPath() != null -> true
         else -> false
     }
@@ -379,6 +384,17 @@ if (hostOs.isMacOsX) {
             "-DCMAKE_OSX_ARCHITECTURES=arm64",
             "-DCMAKE_OSX_SYSROOT=appletvsimulator",
             "-DCMAKE_OSX_DEPLOYMENT_TARGET=${deploymentTargetFor("tvosSimulatorArm64")}",
+        ),
+    )
+    // Cross-compile the MinGW static library with Homebrew's
+    // x86_64-w64-mingw32 toolchain (canBuildNativeTarget gates on it).
+    registerNativeBuildTasks(
+        "mingwX64",
+        listOf(
+            "-DCMAKE_SYSTEM_NAME=Windows",
+            "-DCMAKE_SYSTEM_PROCESSOR=x86_64",
+            "-DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc",
+            "-DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++",
         ),
     )
 } else if (hostOs.isLinux) {
