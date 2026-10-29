@@ -306,16 +306,23 @@ fun registerNativeBuildTasks(targetName: String, cmakeFlags: List<String> = empt
         commandLine(cmakeExecutable, "--build", ".", "--config", "Release")
     }
 
-    tasks.matching {
-        it.name.startsWith("cinteropSdl") &&
-                it.name.endsWith(targetName.replaceFirstChar { c -> c.uppercase() })
-    }.configureEach {
-        dependsOn(buildTask)
-        // The cinterop task's custom up-to-date check only watches headers and
-        // the .def file; register the static library as an input so a rebuild
-        // of SDL3 re-embeds it (otherwise stale archives would leak into the
-        // published klib on incremental builds).
-        inputs.file(outputDir.resolve("libSDL3.a"))
+    // Only targets that are actually built on this host embed the archive, so
+    // only they may depend on it or register it as an input. Doing so for a
+    // skipped target fails input validation ("input file does not exist") on
+    // hosts without the target toolchain, e.g. mingwX64 on a macOS runner
+    // without Homebrew mingw-w64.
+    if (canBuildNativeTarget(targetName)) {
+        tasks.matching {
+            it.name.startsWith("cinteropSdl") &&
+                    it.name.endsWith(targetName.replaceFirstChar { c -> c.uppercase() })
+        }.configureEach {
+            dependsOn(buildTask)
+            // The cinterop task's custom up-to-date check only watches headers
+            // and the .def file; register the static library as an input so a
+            // rebuild of SDL3 re-embeds it (otherwise stale archives would leak
+            // into the published klib on incremental builds).
+            inputs.file(outputDir.resolve("libSDL3.a"))
+        }
     }
 }
 
