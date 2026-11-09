@@ -589,3 +589,92 @@ tasks.register<Exec>("linkWasmSdl") {
     outputs.file(File(wasmSdlOutput, "sdl_wasm.js"))
     outputs.file(File(wasmSdlOutput, "sdl_wasm.wasm"))
 }
+
+// ==================== wasm: npm package ====================
+// The Emscripten module and the JS glue ship as an npm package
+// (@enaium/sdl-kmp) instead of a Maven "assets" jar: web apps depend on
+// it like any other npm package and `import { initSdlKmp } from
+// "@enaium/sdl-kmp"` before running the Kotlin/Wasm module, so no asset
+// extraction step is involved.
+//
+// The package version mirrors the pinned SDL release (npm requires a
+// three-component semver, so the library's own revision is not part of it).
+
+val sdlVersion: String by lazy {
+    val header = rootProject.file("SDL/include/SDL3/SDL_version.h").readText()
+    fun macro(name: String): String =
+        Regex("""#define\s+$name\s+(\d+)""").find(header)?.groupValues?.get(1)
+            ?: error("$name is missing from SDL_version.h")
+    "${macro("SDL_MAJOR_VERSION")}.${macro("SDL_MINOR_VERSION")}.${macro("SDL_MICRO_VERSION")}"
+}
+
+val wasmNpmDir = layout.buildDirectory.dir("npm").get().asFile
+val wasmGlue = wasmSdlDir.resolve("sdl_kmp_glue.js")
+
+tasks.register("assembleWasmNpm") {
+    group = "build"
+    description = "Stages the @enaium/sdl-kmp npm package in build/npm."
+    dependsOn("linkWasmSdl")
+    inputs.file(wasmGlue)
+    // The version comes from these headers, so a SDL bump must re-stage.
+    inputs.file(rootProject.file("SDL/include/SDL3/SDL_version.h"))
+    inputs.file(File(wasmSdlOutput, "sdl_wasm.js"))
+    inputs.file(File(wasmSdlOutput, "sdl_wasm.wasm"))
+    outputs.dir(wasmNpmDir)
+    doLast {
+        wasmNpmDir.deleteRecursively()
+        wasmNpmDir.mkdirs()
+        wasmGlue.copyTo(wasmNpmDir.resolve("sdl_kmp_glue.js"), overwrite = true)
+        File(wasmSdlOutput, "sdl_wasm.js").copyTo(wasmNpmDir.resolve("sdl_wasm.js"), overwrite = true)
+        File(wasmSdlOutput, "sdl_wasm.wasm").copyTo(wasmNpmDir.resolve("sdl_wasm.wasm"), overwrite = true)
+        wasmNpmDir.resolve("package.json").writeText(
+            """
+            {
+              "name": "@enaium/sdl-kmp",
+              "version": "$sdlVersion",
+              "description": "Emscripten-compiled SDL3 module and JS glue for the sdl-kmp wasmJs target",
+              "license": "Zlib",
+              "type": "module",
+              "exports": {
+                ".": "./sdl_kmp_glue.js",
+                "./sdl_wasm.js": "./sdl_wasm.js",
+                "./package.json": "./package.json"
+              },
+              "files": ["sdl_kmp_glue.js", "sdl_wasm.js", "sdl_wasm.wasm"],
+              "homepage": "https://github.com/Enaium/sdl-kmp",
+              "repository": {
+                "type": "git",
+                "url": "git+https://github.com/Enaium/sdl-kmp.git"
+              }
+            }
+            """.trimIndent() + "\n",
+        )
+    }
+}
+
+tasks.register<Exec>("publishWasmNpm") {
+    group = "publishing"
+    description = "Publishes @enaium/sdl-kmp to npm (token: npm.publish.key)."
+    dependsOn("assembleWasmNpm")
+    workingDir = wasmNpmDir
+    // The token lives in the user-level Gradle properties file
+    // (~/.gradle/gradle.properties, next to mavenCentralUsername and the
+    // signing.* entries); CI writes the same key there from a repository
+    // secret. `-Pnpm.publish.key=<token>` overrides it for one-off runs.
+    val npmKey = providers.gradleProperty("npm.publish.key")
+    doFirst {
+        val key = npmKey.orNull?.takeIf { it.isNotBlank() }
+            ?: throw GradleException(
+                "npm.publish.key is not set: add it to ~/.gradle/gradle.properties " +
+                        "or pass -Pnpm.publish.key=<token>",
+            )
+        // NODE_AUTH_TOKEN is expanded by npm through the environment, so the
+        // token never lands in the package.json/tarball; .npmrc is on npm's
+        // never-publish list anyway.
+        environment("NODE_AUTH_TOKEN", key)
+        wasmNpmDir.resolve(".npmrc").writeText(
+            "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}\n",
+        )
+    }
+    commandLine("npm", "publish", "--access", "public")
+}

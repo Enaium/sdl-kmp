@@ -1,0 +1,9 @@
+{
+  "name": "sdl-kmp-example-sdl-renderer-browser",
+  "private": true,
+  "type": "module",
+  "description": "Browser runner for the sdl-kmp sdl_renderer example",
+  "dependencies": {
+    "@enaium/sdl-kmp": "file:../../../sdl-kmp/build/npm"
+  }
+}

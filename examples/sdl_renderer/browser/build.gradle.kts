@@ -1,5 +1,3 @@
-import org.gradle.internal.os.OperatingSystem
-
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
 }
@@ -25,34 +23,48 @@ kotlin {
 }
 
 // ==================== web assets ====================
+// The Emscripten module and the JS glue are consumed as the
+// @enaium/sdl-kmp npm package: this module's package.json points the
+// dependency at the package staged by :sdl-kmp:assembleWasmNpm, so the build
+// works without registry access (an app using the published package depends
+// on "^3.4.18" instead of the file: path).
+//
 // The wasmJs webpack distribution requires npm, which is not always
 // available, so assemble a self-contained static app directory instead:
 //   build/browserApp/
-//     index.html            (entry page)
-//     sdl_kmp_glue.js       (JS bridge that instantiates the SDL3 module)
-//     sdl_wasm.js/.wasm     (Emscripten-compiled SDL3, from :sdl-kmp:linkWasmSdl)
-//     *.mjs/*.wasm          (the Kotlin/Wasm executable output)
+//     index.html                          (entry page; import map -> package)
+//     node_modules/@enaium/sdl-kmp/  (installed package: glue + SDL3 wasm)
+//     browser-node-test.mjs               (headless Node runner, bare import)
+//     *.mjs/*.wasm                        (the Kotlin/Wasm executable output)
 // Serve it with any static file server (e.g. `python3 -m http.server`).
 
 val sdlKmpProject = project(":sdl-kmp")
-val sdlKmpLinkTask = sdlKmpProject.tasks.named("linkWasmSdl")
-val wasmSdlOutput = sdlKmpProject.layout.buildDirectory.dir("wasmSdl").get().asFile
 val kotlinWasmOutput = layout.buildDirectory.dir("compileSync/wasmJs/main/developmentExecutable/kotlin").get().asFile
+val installedWasmPackage = layout.projectDirectory.dir("node_modules/@enaium/sdl-kmp")
+
+val npmInstall = tasks.register<Exec>("npmInstall") {
+    description = "Installs the example's npm dependencies (@enaium/sdl-kmp)."
+    dependsOn(sdlKmpProject.tasks.named("assembleWasmNpm"))
+    workingDir = layout.projectDirectory.asFile
+    commandLine("npm", "install", "--no-audit", "--no-fund")
+    inputs.file(layout.projectDirectory.file("package.json"))
+    outputs.dir(layout.projectDirectory.dir("node_modules"))
+}
 
 val copyWebAssets = tasks.register<Copy>("copyWebAssets") {
-    dependsOn(sdlKmpLinkTask)
     dependsOn("compileDevelopmentExecutableKotlinWasmJs")
+    dependsOn(npmInstall)
     from("src/wasmJsMain/resources/web") {
         include("**")
     }
     from(layout.projectDirectory) {
         include("browser-node-test.mjs")
     }
-    from(sdlKmpProject.layout.projectDirectory.dir("wasm")) {
-        include("sdl_kmp_glue.js")
-    }
-    from(wasmSdlOutput) {
-        include("sdl_wasm.js", "sdl_wasm.wasm")
+    // npm installs file: dependencies as a symlink; copy the real package
+    // contents so the static app resolves it through the import map (browser)
+    // and through node_modules (Node).
+    from(provider { installedWasmPackage.asFile.canonicalFile }) {
+        into("node_modules/@enaium/sdl-kmp")
     }
     from(kotlinWasmOutput) {
         include("**")

@@ -210,25 +210,32 @@ exposing the whole sdl-kmp API as flat functions. A JS glue layer
 to the Kotlin wasmJs actuals. Building it requires the Emscripten SDK (see
 `gradle.properties`/the `wasm.emsdk` property; the CI installs it).
 
-The module is published separately as `cn.enaium.sdl:sdl-kmp-wasm-assets`
-(a jar with `sdl_wasm.js`, `sdl_wasm.wasm` and `sdl_kmp_glue.js` at its root,
-built by `:sdl-kmp:wasm:jar` from `:sdl-kmp:linkWasmSdl`). A wasmJs
-consumer unpacks that jar into the web root next to the Kotlin/Wasm output
-and loads the glue before running the Kotlin module:
+The module and the glue are published as the `@enaium/sdl-kmp` npm
+package (`:sdl-kmp:assembleWasmNpm` stages it in `build/npm` and
+`:sdl-kmp:publishWasmNpm` publishes it; its version mirrors the pinned SDL
+release). The npm token is read from the user-level Gradle properties file
+(`npm.publish.key` in `~/.gradle/gradle.properties`, or
+`-Pnpm.publish.key=<token>`), like the Maven Central and signing
+credentials. A wasmJs consumer depends on the package like any other npm
+package and loads the glue before the Kotlin module runs:
 
-A wasmJs consumer must load the SDL module before running the Kotlin module:
+```bash
+npm install @enaium/sdl-kmp
+```
 
 ```html
 <script type="module">
-    import { initSdlKmp } from './sdl_kmp_glue.js';
+    import { initSdlKmp } from '@enaium/sdl-kmp';
     await initSdlKmp();                                   // instantiate SDL3
     await import('./index.mjs');                          // Kotlin module; main() auto-runs
 </script>
 ```
 
-See `examples/sdl_renderer/browser` for a complete runnable page (its
-`browser-node-test.mjs` runs the demo headlessly in Node with the dummy
-drivers).
+Bundlers resolve the bare specifier; a plain static page can use an import
+map. See `examples/sdl_renderer/browser` for a complete runnable page: its
+`package.json` depends on the package, `copyWebAssets` assembles a static
+`build/browserApp` around it, and `browser-node-test.mjs` runs the demo
+headlessly in Node with the dummy drivers.
 
 ```bash
 # Publish the library to the local Maven repository first (macOS builds all

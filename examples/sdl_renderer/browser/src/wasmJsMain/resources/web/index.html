@@ -20,12 +20,20 @@
 </head>
 <body>
 <canvas id="canvas"></canvas>
+<script type="importmap">
+    {
+        "imports": {
+            "@enaium/sdl-kmp": "./node_modules/@enaium/sdl-kmp/sdl_kmp_glue.js"
+        }
+    }
+</script>
 <script type="module">
-    import { initSdlKmp } from './sdl_kmp_glue.js';
+    import { initSdlKmp } from '@enaium/sdl-kmp';
 
-    // 1. Compile and instantiate the Emscripten SDL3 module; the glue exposes
-    //    the sdl_kmp_* JS functions the Kotlin wasmJs actuals call. SDL3's
-    //    Emscripten driver finds the canvas through the #canvas selector.
+    // 1. Compile and instantiate the Emscripten SDL3 module from the
+    //    @enaium/sdl-kmp npm package; the glue exposes the sdl_kmp_* JS
+    //    functions the Kotlin wasmJs actuals call. SDL3's Emscripten driver
+    //    finds the canvas through the #canvas selector.
     const canvas = document.getElementById('canvas');
     canvas.width = 800;
     canvas.height = 600;

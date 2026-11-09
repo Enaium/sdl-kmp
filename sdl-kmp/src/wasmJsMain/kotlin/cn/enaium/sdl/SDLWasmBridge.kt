@@ -30,9 +30,10 @@ import kotlin.js.JsArray
 import kotlin.js.JsString
 
 /*
- * Declarations for the JS glue (sdl_kmp_glue.js) that wraps the
- * Emscripten-compiled SDL3 module. The glue is loaded and initialized by the
- * host page BEFORE the Kotlin module runs, so these globals always exist.
+ * Declarations for the JS glue (sdl_kmp_glue.js, shipped in the
+ * @enaium/sdl-kmp npm package) that wraps the Emscripten-compiled SDL3
+ * module. The glue is loaded and initialized by the host page BEFORE the
+ * Kotlin module runs, so these globals always exist.
  *
  * Result-buffer convention: functions that have C out-parameters write their
  * results into the global sdlKmpResultI32 / sdlKmpResultF32 arrays (fixed

@@ -22,7 +22,6 @@ dependencyResolutionManagement {
 rootProject.name = "sdl-kmp"
 
 include(":sdl-kmp")
-include(":sdl-kmp:wasm")
 
 include(":examples:sdl_renderer")
 include(":examples:sdl_renderer:android")

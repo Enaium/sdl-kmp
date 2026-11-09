@@ -25,9 +25,9 @@ name: Publish
 #                    Android/JVM target that depends on sdl-kmp-android-jvm)
 #                    + the android-jvm AAR (org.libsdl.app.SDLActivity and
 #                    the per-ABI libsdl_jni.so, built with the NDK)
-#   ubuntu-latest -> :sdl-kmp wasmJs klib + :sdl-kmp:wasm assets
-#                    (Emscripten-compiled SDL3 module sdl_wasm.js/.wasm +
-#                    sdl_kmp_glue.js; the wasmJs target has no cinterop, so
+#   ubuntu-latest -> :sdl-kmp wasmJs klib + the @enaium/sdl-kmp npm
+#                    package (Emscripten-compiled SDL3 module sdl_wasm.js/.wasm
+#                    + sdl_kmp_glue.js; the wasmJs target has no cinterop, so
 #                    the module cannot ride inside the klib)
 #
 # The kotlinMultiplatform metadata module (published from macOS) redirects to
@@ -43,6 +43,8 @@ name: Publish
 #   SIGNING_KEY              base64-encoded PGP secret key ring (.gpg, binary)
 #   SIGNING_KEY_ID           8-hex-digit key id (without the 0x prefix)
 #   SIGNING_PASSWORD         Passphrase of the signing key
+#   NPM_PUBLISH_KEY          npm token, written to ~/.gradle/gradle.properties
+#                            as npm.publish.key before the npm publish step
 
 jobs:
   publish-macos:
@@ -209,8 +211,8 @@ jobs:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
 
-  publish-wasm-assets:
-    name: Publish wasmJs klib + wasm assets
+  publish-wasm-npm:
+    name: Publish wasmJs klib + npm package
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -244,7 +246,7 @@ jobs:
           ls -la "$RUNNER_TEMP/signing-key.gpg"
           head -c 16 "$RUNNER_TEMP/signing-key.gpg" | od -c | head -2
 
-      - name: Publish the wasmJs klib and the wasm assets jar
+      - name: Publish the wasmJs klib
         run: >
           ./gradlew --no-daemon --stacktrace
           -Pwasm.emsdk="$HOME/emsdk"
@@ -252,11 +254,17 @@ jobs:
           -Psigning.secretKeyRingFile="${{ runner.temp }}/signing-key.gpg"
           -Psigning.password="${{ secrets.SIGNING_PASSWORD }}"
           :sdl-kmp:publishWasmJsPublicationToMavenCentralRepository
-          :sdl-kmp:wasm:publishMavenPublicationToMavenCentralRepository
-          --continue
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+
+      - name: Publish the @enaium/sdl-kmp npm package
+        run: |
+          install -d "$HOME/.gradle"
+          printf 'npm.publish.key=%s\n' "$NPM_PUBLISH_KEY" >> "$HOME/.gradle/gradle.properties"
+          ./gradlew --no-daemon --stacktrace -Pwasm.emsdk="$HOME/emsdk" :sdl-kmp:publishWasmNpm
+        env:
+          NPM_PUBLISH_KEY: ${{ secrets.NPM_PUBLISH_KEY }}
 
   publish-windows:
     name: Publish Windows (windows-x86_64 JNI artifact)

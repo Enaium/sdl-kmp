@@ -66,7 +66,7 @@ globalThis.AudioContext = class {
     resume() { return Promise.resolve(); }
 };
 
-const { initSdlKmp } = await import('./sdl_kmp_glue.js');
+const { initSdlKmp } = await import('@enaium/sdl-kmp');
 await initSdlKmp();
 
 // On emscripten there is no environment to read hints from, so force the
