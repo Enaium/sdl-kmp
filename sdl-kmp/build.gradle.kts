@@ -597,8 +597,11 @@ tasks.register<Exec>("linkWasmSdl") {
 // "@enaium/sdl-kmp"` before running the Kotlin/Wasm module, so no asset
 // extraction step is involved.
 //
-// The package version mirrors the pinned SDL release (npm requires a
-// three-component semver, so the library's own revision is not part of it).
+// The package version is the pinned SDL release plus this library's own
+// revision: npm only accepts three-component semver, so the fourth component
+// of the Gradle version (3.4.18.1) becomes a prerelease suffix (3.4.18-1).
+// npm strips build metadata, and four dotted numbers are "cleaned" to
+// nonsense, so this is the only faithful representation.
 
 val sdlVersion: String by lazy {
     val header = rootProject.file("SDL/include/SDL3/SDL_version.h").readText()
@@ -606,6 +609,11 @@ val sdlVersion: String by lazy {
         Regex("""#define\s+$name\s+(\d+)""").find(header)?.groupValues?.get(1)
             ?: error("$name is missing from SDL_version.h")
     "${macro("SDL_MAJOR_VERSION")}.${macro("SDL_MINOR_VERSION")}.${macro("SDL_MICRO_VERSION")}"
+}
+
+val npmPackageVersion: String by lazy {
+    val revision = rootProject.version.toString().split('.').drop(3).joinToString(".")
+    if (revision.isEmpty()) sdlVersion else "$sdlVersion-$revision"
 }
 
 val wasmNpmDir = layout.buildDirectory.dir("npm").get().asFile
@@ -616,8 +624,10 @@ tasks.register("assembleWasmNpm") {
     description = "Stages the @enaium/sdl-kmp npm package in build/npm."
     dependsOn("linkWasmSdl")
     inputs.file(wasmGlue)
-    // The version comes from these headers, so a SDL bump must re-stage.
+    // The version comes from these headers and the Gradle version, so either
+    // bump must re-stage.
     inputs.file(rootProject.file("SDL/include/SDL3/SDL_version.h"))
+    inputs.property("npmPackageVersion", npmPackageVersion)
     inputs.file(File(wasmSdlOutput, "sdl_wasm.js"))
     inputs.file(File(wasmSdlOutput, "sdl_wasm.wasm"))
     outputs.dir(wasmNpmDir)
@@ -631,7 +641,7 @@ tasks.register("assembleWasmNpm") {
             """
             {
               "name": "@enaium/sdl-kmp",
-              "version": "$sdlVersion",
+              "version": "$npmPackageVersion",
               "description": "Emscripten-compiled SDL3 module and JS glue for the sdl-kmp wasmJs target",
               "license": "Zlib",
               "type": "module",
@@ -676,5 +686,7 @@ tasks.register<Exec>("publishWasmNpm") {
             "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}\n",
         )
     }
-    commandLine("npm", "publish", "--access", "public")
+    // The revision-bearing version (3.4.18-1) is a semver prerelease, so npm
+    // requires an explicit tag; `latest` keeps `npm i @enaium/sdl-kmp` working.
+    commandLine("npm", "publish", "--access", "public", "--tag", "latest")
 }
