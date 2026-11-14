@@ -11,5 +11,5 @@ allprojects {
     group = "cn.enaium.sdl"
     // Tracks the pinned SDL release (3.4.18); the trailing component is this
     // library's own revision.
-    version = "3.4.18.1"
+    version = "3.4.18.2"
 }
