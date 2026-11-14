@@ -999,8 +999,8 @@ int sdl_kmp_CreateThread(const char *name, void *fn, void *data) { return 0; }
 int sdl_kmp_IOFromFile(const char *path, const char *mode) { return (int)(intptr_t)SDL_IOFromFile(path, mode); }
 int sdl_kmp_IOFromMem(void *data, int size) { return (int)(intptr_t)SDL_IOFromMem(data, size); }
 int sdl_kmp_IOFromConstMem(const void *data, int size) { return (int)(intptr_t)SDL_IOFromConstMem(data, size); }
-long long sdl_kmp_IORead(int io, void *buf, int size) { return (long long)SDL_ReadIO((SDL_IOStream *)(intptr_t)io, buf, size); }
-long long sdl_kmp_IOWrite(int io, const void *buf, int size) { return (long long)SDL_WriteIO((SDL_IOStream *)(intptr_t)io, buf, size); }
+int sdl_kmp_IORead(int io, void *buf, int size) { return (int)SDL_ReadIO((SDL_IOStream *)(intptr_t)io, buf, (size_t)size); }
+int sdl_kmp_IOWrite(int io, const void *buf, int size) { return (int)SDL_WriteIO((SDL_IOStream *)(intptr_t)io, buf, (size_t)size); }
 long long sdl_kmp_IOSeek(int io, long long offset, int whence) { return (long long)SDL_SeekIO((SDL_IOStream *)(intptr_t)io, offset, (SDL_IOWhence)whence); }
 long long sdl_kmp_IOTell(int io) { return (long long)SDL_TellIO((SDL_IOStream *)(intptr_t)io); }
 long long sdl_kmp_IOStreamSize(int io) { return (long long)SDL_GetIOSize((SDL_IOStream *)(intptr_t)io); }
