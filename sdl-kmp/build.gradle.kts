@@ -597,24 +597,11 @@ tasks.register<Exec>("linkWasmSdl") {
 // "@enaium/sdl-kmp"` before running the Kotlin/Wasm module, so no asset
 // extraction step is involved.
 //
-// The package version is the pinned SDL release plus this library's own
-// revision: npm only accepts three-component semver, so the fourth component
-// of the Gradle version (3.4.18.1) becomes a prerelease suffix (3.4.18-1).
-// npm strips build metadata, and four dotted numbers are "cleaned" to
-// nonsense, so this is the only faithful representation.
+// The package version is the project version (1.0.14-fixed.3.4.18): the
+// wrapper's own version plus `-fixed.<pinned SDL release>`. That string is
+// valid semver, so Maven and npm share one version.
 
-val sdlVersion: String by lazy {
-    val header = rootProject.file("SDL/include/SDL3/SDL_version.h").readText()
-    fun macro(name: String): String =
-        Regex("""#define\s+$name\s+(\d+)""").find(header)?.groupValues?.get(1)
-            ?: error("$name is missing from SDL_version.h")
-    "${macro("SDL_MAJOR_VERSION")}.${macro("SDL_MINOR_VERSION")}.${macro("SDL_MICRO_VERSION")}"
-}
-
-val npmPackageVersion: String by lazy {
-    val revision = rootProject.version.toString().split('.').drop(3).joinToString(".")
-    if (revision.isEmpty()) sdlVersion else "$sdlVersion-$revision"
-}
+val npmPackageVersion: String by lazy { rootProject.version.toString() }
 
 val wasmNpmDir = layout.buildDirectory.dir("npm").get().asFile
 val wasmGlue = wasmSdlDir.resolve("sdl_kmp_glue.js")
@@ -624,9 +611,7 @@ tasks.register("assembleWasmNpm") {
     description = "Stages the @enaium/sdl-kmp npm package in build/npm."
     dependsOn("linkWasmSdl")
     inputs.file(wasmGlue)
-    // The version comes from these headers and the Gradle version, so either
-    // bump must re-stage.
-    inputs.file(rootProject.file("SDL/include/SDL3/SDL_version.h"))
+    // The version comes from the Gradle version, so a bump must re-stage.
     inputs.property("npmPackageVersion", npmPackageVersion)
     inputs.file(File(wasmSdlOutput, "sdl_wasm.js"))
     inputs.file(File(wasmSdlOutput, "sdl_wasm.wasm"))

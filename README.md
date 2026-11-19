@@ -31,13 +31,18 @@ Not supported: watchOS (SDL3 has no watchOS support) and visionOS (Kotlin/Native
 
 ## Usage
 
+Versions are `<this library>-fixed.<pinned SDL release>`: the wrapper is
+versioned independently and the suffix records the exact upstream release it
+wraps (e.g. `1.0.14-fixed.3.4.18`). The same string is used for the npm
+package, so Maven and npm stay aligned.
+
 `build.gradle.kts`:
 
 ```kotlin
 kotlin {
     sourceSets {
         commonMain.dependencies {
-            implementation("cn.enaium.sdl:sdl-kmp:1.0.13")
+            implementation("cn.enaium.sdl:sdl-kmp:1.0.14-fixed.3.4.18")
         }
     }
 }
@@ -212,8 +217,9 @@ to the Kotlin wasmJs actuals. Building it requires the Emscripten SDK (see
 
 The module and the glue are published as the `@enaium/sdl-kmp` npm
 package (`:sdl-kmp:assembleWasmNpm` stages it in `build/npm` and
-`:sdl-kmp:publishWasmNpm` publishes it; its version mirrors the pinned SDL
-release). The npm token is read from the user-level Gradle properties file
+`:sdl-kmp:publishWasmNpm` publishes it; it uses the project version, e.g.
+`1.0.14-fixed.3.4.18`). The npm token is read from the user-level Gradle
+properties file
 (`npm.publish.key` in `~/.gradle/gradle.properties`, or
 `-Pnpm.publish.key=<token>`), like the Maven Central and signing
 credentials. A wasmJs consumer depends on the package like any other npm

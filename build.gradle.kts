@@ -9,7 +9,9 @@ plugins {
 // ==================== Project coordinates ====================
 allprojects {
     group = "cn.enaium.sdl"
-    // Tracks the pinned SDL release (3.4.18); the trailing component is this
-    // library's own revision.
-    version = "3.4.18.2"
+    // <this library's version>-fixed.<pinned SDL release>: the wrapper is
+    // versioned on its own, and the suffix records the exact upstream release
+    // it wraps. The whole string is also valid semver, so the npm package
+    // published from :sdl-kmp uses it unchanged.
+    version = "1.0.14-fixed.3.4.18"
 }

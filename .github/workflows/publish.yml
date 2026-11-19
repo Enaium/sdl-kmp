@@ -260,6 +260,11 @@ jobs:
 
       - name: Publish the @enaium/sdl-kmp npm package
         run: |
+          version=$(grep -oE 'version = "[^"]+"' build.gradle.kts | head -1 | cut -d'"' -f2)
+          if npm view "@enaium/sdl-kmp@$version" version >/dev/null 2>&1; then
+            echo "@enaium/sdl-kmp@$version is already on the registry; skipping"
+            exit 0
+          fi
           install -d "$HOME/.gradle"
           printf 'npm.publish.key=%s\n' "$NPM_PUBLISH_KEY" >> "$HOME/.gradle/gradle.properties"
           ./gradlew --no-daemon --stacktrace -Pwasm.emsdk="$HOME/emsdk" :sdl-kmp:publishWasmNpm
